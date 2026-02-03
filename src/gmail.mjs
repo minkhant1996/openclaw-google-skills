@@ -6,6 +6,97 @@ import path from "path";
 const HOME = process.env.HOME;
 const CREDS_PATH = path.join(HOME, ".openclaw/credentials/google-oauth-client.json");
 const TOKEN_PATH = path.join(HOME, ".openclaw/credentials/google-token.json");
+const CONFIG_PATH = path.join(HOME, ".openclaw/credentials/gmail-config.json");
+
+// Default config - user can customize in ~/.openclaw/credentials/gmail-config.json
+const DEFAULT_CONFIG = {
+  signature: "",  // e.g., "\n\nBest regards,\nMin Khant Soe"
+  fromName: "",   // e.g., "Min Khant Soe"
+  warnOnPlaceholders: true,
+  blockOnPlaceholders: true
+};
+
+// Common placeholder patterns to detect
+const PLACEHOLDER_PATTERNS = [
+  /\[Your Name\]/gi,
+  /\[YOUR NAME\]/g,
+  /\[Name\]/gi,
+  /\[First Name\]/gi,
+  /\[Last Name\]/gi,
+  /\[Full Name\]/gi,
+  /\[Company\]/gi,
+  /\[Company Name\]/gi,
+  /\[Email\]/gi,
+  /\[Phone\]/gi,
+  /\[Address\]/gi,
+  /\[Date\]/gi,
+  /\[Title\]/gi,
+  /\[Position\]/gi,
+  /\[Recipient\]/gi,
+  /\[Recipient Name\]/gi,
+  /\[INSERT .+?\]/gi,
+  /\[ENTER .+?\]/gi,
+  /\[ADD .+?\]/gi,
+  /\[TODO.+?\]/gi,
+  /<Your Name>/gi,
+  /<NAME>/gi,
+  /\{\{.+?\}\}/g,  // Handlebars-style {{placeholder}}
+  /__(NAME|EMAIL|COMPANY|PHONE|DATE)__/gi,
+];
+
+function loadConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      const userConfig = JSON.parse(fs.readFileSync(CONFIG_PATH));
+      return { ...DEFAULT_CONFIG, ...userConfig };
+    }
+  } catch (e) {
+    // Ignore config errors, use defaults
+  }
+  return DEFAULT_CONFIG;
+}
+
+function detectPlaceholders(text) {
+  const found = [];
+  for (const pattern of PLACEHOLDER_PATTERNS) {
+    const matches = text.match(pattern);
+    if (matches) {
+      found.push(...matches);
+    }
+  }
+  return [...new Set(found)]; // Remove duplicates
+}
+
+function validateMessageContent(subject, body, config) {
+  if (!config.warnOnPlaceholders && !config.blockOnPlaceholders) {
+    return { valid: true };
+  }
+
+  const allText = `${subject}\n${body}`;
+  const placeholders = detectPlaceholders(allText);
+
+  if (placeholders.length > 0) {
+    const message = `\n⚠️  PLACEHOLDER DETECTED!\n` +
+      `Found unfilled placeholders: ${placeholders.join(", ")}\n` +
+      `Please replace these with actual values before sending.\n`;
+
+    if (config.blockOnPlaceholders) {
+      return { valid: false, message, placeholders };
+    } else {
+      console.log(message);
+      return { valid: true, warned: true, placeholders };
+    }
+  }
+
+  return { valid: true };
+}
+
+function applySignature(body, config) {
+  if (config.signature && !body.includes(config.signature.trim())) {
+    return body + config.signature;
+  }
+  return body;
+}
 
 function getAuth() {
   const creds = JSON.parse(fs.readFileSync(CREDS_PATH));
@@ -277,16 +368,34 @@ const commands = {
   // ==================== SEND EMAIL ====================
   async send(args) {
     const flags = parseFlags(args);
+    const config = loadConfig();
     const to = flags.to || flags._[0];
     const subject = flags.subject || flags.s || "(No subject)";
-    const body = flags.body || flags.message || flags.m || flags._[1] || "";
+    let body = flags.body || flags.message || flags.m || flags._[1] || "";
     const cc = flags.cc;
     const bcc = flags.bcc;
+    const skipCheck = flags["no-check"] || flags.force;
 
     if (!to) {
       console.log("Usage: gmail send --to 'email@example.com' --subject 'Subject' --body 'Message'");
+      console.log("\nOptions:");
+      console.log("  --no-check    Skip placeholder detection");
+      console.log("\nTip: Set your signature in ~/.openclaw/credentials/gmail-config.json");
       return;
     }
+
+    // Check for placeholders unless skipped
+    if (!skipCheck) {
+      const validation = validateMessageContent(subject, body, config);
+      if (!validation.valid) {
+        console.log(validation.message);
+        console.log("Use --no-check or --force to send anyway.");
+        return;
+      }
+    }
+
+    // Apply signature if configured
+    body = applySignature(body, config);
 
     let rawMessage = `To: ${to}\r\n`;
     if (cc) rawMessage += `Cc: ${cc}\r\n`;
@@ -309,13 +418,28 @@ const commands = {
   // ==================== REPLY ====================
   async reply(args) {
     const flags = parseFlags(args);
+    const config = loadConfig();
     const messageId = flags._[0];
-    const body = flags.body || flags.message || flags.m || flags._[1];
+    let body = flags.body || flags.message || flags.m || flags._[1];
+    const skipCheck = flags["no-check"] || flags.force;
 
     if (!messageId || !body) {
       console.log("Usage: gmail reply <messageId> --body 'Your reply message'");
       return;
     }
+
+    // Check for placeholders unless skipped
+    if (!skipCheck) {
+      const validation = validateMessageContent("", body, config);
+      if (!validation.valid) {
+        console.log(validation.message);
+        console.log("Use --no-check or --force to send anyway.");
+        return;
+      }
+    }
+
+    // Apply signature if configured
+    body = applySignature(body, config);
 
     // Get original message
     const original = await gmail.users.messages.get({
@@ -360,13 +484,25 @@ const commands = {
   // ==================== FORWARD ====================
   async forward(args) {
     const flags = parseFlags(args);
+    const config = loadConfig();
     const messageId = flags._[0];
     const to = flags.to || flags._[1];
-    const note = flags.note || flags.body || "";
+    let note = flags.note || flags.body || "";
+    const skipCheck = flags["no-check"] || flags.force;
 
     if (!messageId || !to) {
       console.log("Usage: gmail forward <messageId> --to 'email@example.com' [--note 'Your note']");
       return;
+    }
+
+    // Check for placeholders in note unless skipped
+    if (!skipCheck && note) {
+      const validation = validateMessageContent("", note, config);
+      if (!validation.valid) {
+        console.log(validation.message);
+        console.log("Use --no-check or --force to send anyway.");
+        return;
+      }
     }
 
     // Get original message
@@ -383,6 +519,11 @@ const commands = {
     const origBody = extractBody(original.data.payload);
 
     const fwdSubject = origSubject.startsWith("Fwd:") ? origSubject : "Fwd: " + origSubject;
+
+    // Apply signature to note if configured
+    if (note) {
+      note = applySignature(note, config);
+    }
 
     let body = note ? note + "\r\n\r\n" : "";
     body += "---------- Forwarded message ---------\r\n";
@@ -409,14 +550,28 @@ const commands = {
   // ==================== CREATE DRAFT ====================
   async draft(args) {
     const flags = parseFlags(args);
+    const config = loadConfig();
     const to = flags.to || flags._[0];
     const subject = flags.subject || flags.s || "(No subject)";
-    const body = flags.body || flags.message || flags.m || "";
+    let body = flags.body || flags.message || flags.m || "";
+    const skipCheck = flags["no-check"] || flags.force;
 
     if (!to) {
       console.log("Usage: gmail draft --to 'email@example.com' --subject 'Subject' --body 'Message'");
       return;
     }
+
+    // Check for placeholders (warn but don't block for drafts)
+    if (!skipCheck) {
+      const placeholders = detectPlaceholders(`${subject}\n${body}`);
+      if (placeholders.length > 0) {
+        console.log(`\n⚠️  Note: Draft contains placeholders: ${placeholders.join(", ")}`);
+        console.log("Remember to replace them before sending!\n");
+      }
+    }
+
+    // Apply signature if configured
+    body = applySignature(body, config);
 
     let rawMessage = `To: ${to}\r\n`;
     rawMessage += `Subject: ${subject}\r\n`;
@@ -612,6 +767,75 @@ const commands = {
     console.log("  Threads: " + res.data.threadsTotal);
   },
 
+  // ==================== CONFIG ====================
+  async config(args) {
+    const flags = parseFlags(args);
+    const action = flags._[0];
+
+    // Load existing config or defaults
+    let config = loadConfig();
+
+    if (!action) {
+      // Show current config
+      console.log("\nGmail Config (~/.openclaw/credentials/gmail-config.json):\n");
+      console.log("  Signature: " + (config.signature ? `"${config.signature.replace(/\n/g, '\\n')}"` : "(not set)"));
+      console.log("  From Name: " + (config.fromName || "(not set)"));
+      console.log("  Warn on Placeholders: " + config.warnOnPlaceholders);
+      console.log("  Block on Placeholders: " + config.blockOnPlaceholders);
+      console.log("\nUsage:");
+      console.log("  gmail config set-signature 'Best regards,\\nMin Khant Soe'");
+      console.log("  gmail config set-name 'Min Khant Soe'");
+      console.log("  gmail config placeholders on|off");
+      return;
+    }
+
+    if (action === "set-signature" || action === "signature") {
+      const sig = flags._[1] || flags.signature || flags.s;
+      if (!sig) {
+        console.log("Usage: gmail config set-signature 'Your signature'");
+        console.log("Example: gmail config set-signature 'Best regards,\\nMin Khant Soe'");
+        return;
+      }
+      // Parse \n as actual newlines
+      config.signature = "\n\n" + sig.replace(/\\n/g, "\n");
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      console.log("\n✅ Signature updated!");
+      console.log("Preview:\n" + config.signature);
+    } else if (action === "set-name" || action === "name") {
+      const name = flags._[1] || flags.name || flags.n;
+      if (!name) {
+        console.log("Usage: gmail config set-name 'Your Name'");
+        return;
+      }
+      config.fromName = name;
+      fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+      console.log("\n✅ From name updated to: " + name);
+    } else if (action === "placeholders") {
+      const onOff = flags._[1];
+      if (onOff === "on" || onOff === "true") {
+        config.warnOnPlaceholders = true;
+        config.blockOnPlaceholders = true;
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        console.log("\n✅ Placeholder detection enabled (will block sending)");
+      } else if (onOff === "off" || onOff === "false") {
+        config.warnOnPlaceholders = false;
+        config.blockOnPlaceholders = false;
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        console.log("\n✅ Placeholder detection disabled");
+      } else if (onOff === "warn") {
+        config.warnOnPlaceholders = true;
+        config.blockOnPlaceholders = false;
+        fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2));
+        console.log("\n✅ Placeholder detection set to warn only (won't block)");
+      } else {
+        console.log("Usage: gmail config placeholders on|off|warn");
+      }
+    } else {
+      console.log("Unknown config action: " + action);
+      console.log("Available: set-signature, set-name, placeholders");
+    }
+  },
+
   // ==================== HELP ====================
   async help() {
     console.log(`
@@ -629,11 +853,13 @@ INBOX & MESSAGES:
 
 COMPOSE & REPLY:
   gmail send --to 'email' --subject 'subj' --body 'message'
-    [--cc 'email'] [--bcc 'email']
+    [--cc 'email'] [--bcc 'email'] [--no-check]
 
-  gmail reply <messageId> --body 'reply message'
-  gmail forward <messageId> --to 'email' [--note 'your note']
+  gmail reply <messageId> --body 'reply message' [--no-check]
+  gmail forward <messageId> --to 'email' [--note 'note'] [--no-check]
   gmail draft --to 'email' --subject 'subj' --body 'message'
+
+  Note: --no-check skips placeholder detection
 
 ORGANIZE:
   gmail star <messageId>                Star a message
@@ -648,8 +874,22 @@ ORGANIZE:
   gmail labels                          List all labels
   gmail label <messageId> --add 'Label1' --remove 'Label2'
 
+CONFIG & SETTINGS:
+  gmail config                          Show current settings
+  gmail config set-signature 'text'     Set email signature
+  gmail config set-name 'Your Name'     Set sender name
+  gmail config placeholders on|off|warn Toggle placeholder detection
+
+  Signature example:
+    gmail config set-signature 'Best regards,\\nMin Khant Soe'
+
 OTHER:
   gmail profile                         Show account info
+
+SAFETY FEATURES:
+  - Placeholder Detection: Blocks emails with [Your Name], [EMAIL], etc.
+  - Auto-Signature: Appends your signature to outgoing emails
+  - Configure in: ~/.openclaw/credentials/gmail-config.json
 
 SEARCH OPERATORS:
   from:sender@email.com                 From specific sender

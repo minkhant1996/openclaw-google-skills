@@ -49,4 +49,16 @@ gmail mark-read <messageId>
 gmail labels
 ```
 
+### Safety & Config
+```bash
+gmail config                            # Show settings
+gmail config set-signature 'Best,\nYour Name'  # Set signature
+gmail config placeholders on            # Block [Your Name] etc.
+```
+
+**Safety Features:**
+- Auto-detects placeholders like `[Your Name]`, `[EMAIL]`, `[Company]`
+- Blocks sending until placeholders are replaced (use `--no-check` to override)
+- Auto-appends your configured signature
+
 For full help: `gmail help`
