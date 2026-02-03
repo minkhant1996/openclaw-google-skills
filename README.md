@@ -257,6 +257,116 @@ gmail archive <messageId>
 gmail search "from:important@example.com"
 ```
 
+## OpenClaw Agent Configuration
+
+To ensure the OpenClaw agent uses these CLI tools instead of browser automation, configure the following:
+
+### 1. Create TOOLS.md
+
+Create `~/.openclaw/workspace/TOOLS.md` with instructions for the agent:
+
+```markdown
+# Tool Usage Guide
+
+## IMPORTANT RULES
+
+1. **NEVER use browser** for Google Slides, Sheets, Docs, Drive, Calendar, or Gmail
+2. **ALWAYS use the CLI commands** (gslides, gsheet, gdocs, gdrive, gcal, gmail)
+3. If a command fails, check `--help` for correct usage
+
+## Available Commands
+
+### Google Slides
+- `gslides create "Presentation Name"` - Create new presentation
+- `gslides create-slide <id> --title "Title" --body "Content"` - Add slide with content
+- `gslides read <id>` - Read all slide content
+- `gslides list` - List all presentations
+
+### Google Sheets
+- `gsheet create "Spreadsheet Name"` - Create new spreadsheet
+- `gsheet read <id>` - Read data
+- `gsheet write <id> --range "A1" --value "data"` - Write data
+- `gsheet add-chart <id> --labels "A1:A10" --values "B1:B10"` - Add chart
+
+### Google Docs
+- `gdocs create "Document Name"` - Create new document
+- `gdocs read <id>` - Read content
+- `gdocs append <id> --text "content"` - Add content
+
+### Gmail
+- `gmail inbox` - Read inbox
+- `gmail send --to "email" --subject "Subject" --body "Body"` - Send email
+- `gmail subscriptions` - List email subscriptions
+
+### Google Calendar
+- `gcal list` - List events
+- `gcal create "Event" --start "tomorrow 2pm"` - Create event
+
+### Google Drive
+- `gdrive list` - List files
+- `gdrive upload file.pdf` - Upload file
+```
+
+### 2. Register Skills
+
+Create skill files in `~/.openclaw/skills/` with proper YAML frontmatter:
+
+**`~/.openclaw/skills/google-slides/SKILL.md`:**
+```yaml
+---
+name: google-slides
+description: "Manage Google Slides presentations using gslides CLI"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📽️",
+        "requires": { "bins": ["gslides"] }
+      }
+  }
+---
+
+# Google Slides Skill
+
+Use `gslides` CLI commands. NEVER use browser.
+
+## Key Commands
+- `gslides create "Name"` - Create presentation
+- `gslides create-slide <id> --title "Title" --body "Content"` - Add slide with content
+- `gslides read <id>` - Read slide content
+```
+
+**`~/.openclaw/skills/google-sheets/SKILL.md`:**
+```yaml
+---
+name: google-sheets
+description: "Manage Google Sheets using gsheet CLI"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📊",
+        "requires": { "bins": ["gsheet"] }
+      }
+  }
+---
+
+# Google Sheets Skill
+
+Use `gsheet` CLI commands. NEVER use browser.
+```
+
+### 3. Restart OpenClaw
+
+After making configuration changes:
+```bash
+# Kill existing OpenClaw processes
+pkill -f openclaw
+
+# Start fresh
+openclaw
+```
+
 ## Uninstall
 
 ```bash
@@ -270,4 +380,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ## Author
 
 **Min Khant Soe**
-[SoeMindAI, Inc.](https://soemindai.com)
