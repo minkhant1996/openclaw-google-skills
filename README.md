@@ -56,7 +56,7 @@ bash <(curl -s https://raw.githubusercontent.com/minkhant1996/openclaw-google-sk
 
 ## Prerequisites
 
-1. **Node.js 18+** installed
+1. **Node.js 20+** installed
 2. **Google Cloud Project** with APIs enabled:
    - Gmail API
    - Google Calendar API
@@ -221,8 +221,9 @@ bash <(curl -s https://raw.githubusercontent.com/minkhant1996/openclaw-google-sk
 
 ## License
 
-MIT
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ## Author
 
-BrookAI Team
+**Min Khant Soe**
+[SoeMindAI, Inc.](https://soemindai.com)
