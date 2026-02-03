@@ -20,6 +20,7 @@
   "bin": {
     "gcal": "./src/gcal.mjs",
     "gsheet": "./src/gsheet.mjs",
+    "gdocs": "./src/gdocs.mjs",
     "gmail": "./src/gmail.mjs"
   },
   "type": "module",

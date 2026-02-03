@@ -1,6 +1,6 @@
 # OpenClaw Google Skills
 
-Google Workspace CLI tools for OpenClaw - Calendar, Sheets, and Gmail automation.
+Google Workspace CLI tools for OpenClaw - Calendar, Sheets, Docs, and Gmail automation.
 
 ## Quick Install
 
@@ -27,6 +27,15 @@ bash <(curl -s https://raw.githubusercontent.com/minkhant1996/openclaw-google-sk
 - Conditional formatting
 - Import/export CSV
 - Sharing and permissions
+
+### Google Docs (`gdocs`)
+- Create and manage documents
+- Read document content
+- Append, insert, replace text
+- Add headings, bullet lists, tables
+- Text formatting (bold, italic, colors)
+- Export to PDF, DOCX, TXT, HTML
+- Copy and share documents
 
 ### Gmail (`gmail`)
 - Read inbox, sent, starred, drafts
@@ -121,6 +130,30 @@ gsheet format <id> --range "A1:D1" --bold --bg yellow
 
 # Charts
 gsheet add-chart <id> --range "A1:B10" --type column
+```
+
+### Google Docs
+```bash
+# List documents
+gdocs list
+
+# Create document
+gdocs create "My Document"
+
+# Read document
+gdocs read <id>
+
+# Edit content
+gdocs append <id> --text "Add this text"
+gdocs replace <id> --find "old" --replace "new"
+
+# Add structure
+gdocs heading <id> --text "Section Title" --level 1
+gdocs bullets <id> --items "Item 1,Item 2,Item 3"
+gdocs table <id> --rows 3 --cols 3
+
+# Export
+gdocs export <id> --format pdf --output document.pdf
 ```
 
 ### Gmail
