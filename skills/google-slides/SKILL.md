@@ -26,11 +26,15 @@ gslides info <id>                       # Get details
 
 ### Slides
 ```bash
+gslides create-slide <id> --title "My Title" --body "Content here"
+gslides create-slide <id> --title "Bullets" --body "Point 1\nPoint 2\nPoint 3" --bullets
 gslides add-slide <id> --layout TITLE_AND_BODY
 gslides delete-slide <id> --slide <slideId>
 gslides set-title <id> --slide <slideId> --title "Title"
 gslides set-background <id> --slide <slideId> --color blue
 ```
+
+**IMPORTANT:** Use `create-slide` to add slides WITH content. Use `add-slide` only for empty slides.
 
 ### Content
 ```bash

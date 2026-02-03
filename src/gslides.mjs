@@ -175,6 +175,193 @@ const commands = {
     console.log("  Layout: " + predefinedLayout);
   },
 
+  // ==================== CREATE SLIDE WITH CONTENT ====================
+  async "create-slide"(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+    const title = flags.title || flags._[1];
+    const body = flags.body || flags.content || flags._[2];
+    const layout = (flags.layout || "TITLE_AND_BODY").toUpperCase();
+
+    if (!presentationId) {
+      console.log("Usage: gslides create-slide <presentationId> --title 'Title' --body 'Content'");
+      console.log("Options:");
+      console.log("  --layout TITLE|TITLE_AND_BODY|BLANK (default: TITLE_AND_BODY)");
+      console.log("  --bullets    Format body as bullet points (split by newlines)");
+      return;
+    }
+
+    // First, create the slide
+    const createRes = await slides.presentations.batchUpdate({
+      presentationId,
+      requestBody: {
+        requests: [{
+          createSlide: {
+            slideLayoutReference: { predefinedLayout: layout }
+          }
+        }]
+      }
+    });
+
+    const slideId = createRes.data.replies[0].createSlide.objectId;
+    console.log("Slide created: " + slideId);
+
+    // Get the slide to find placeholders
+    const pres = await slides.presentations.get({ presentationId });
+    const slide = pres.data.slides.find(s => s.objectId === slideId);
+
+    if (!slide) {
+      console.log("Error: Could not find created slide");
+      return;
+    }
+
+    const requests = [];
+
+    // Find and fill title placeholder
+    const titleElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "TITLE" ||
+      el.shape?.placeholder?.type === "CENTERED_TITLE"
+    );
+
+    if (titleElement && title) {
+      requests.push({
+        insertText: {
+          objectId: titleElement.objectId,
+          text: title,
+          insertionIndex: 0
+        }
+      });
+    }
+
+    // Find and fill body placeholder
+    const bodyElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "BODY" ||
+      el.shape?.placeholder?.type === "SUBTITLE"
+    );
+
+    if (bodyElement && body) {
+      let bodyText = body;
+
+      // If bullets flag, format as bullet points
+      if (flags.bullets) {
+        const lines = body.split(/\\n|\n/).filter(l => l.trim());
+        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+      }
+
+      requests.push({
+        insertText: {
+          objectId: bodyElement.objectId,
+          text: bodyText,
+          insertionIndex: 0
+        }
+      });
+    }
+
+    // If no placeholders but we have content, add text boxes
+    if (!titleElement && title) {
+      const titleBoxId = "title_" + Date.now();
+      requests.push(
+        {
+          createShape: {
+            objectId: titleBoxId,
+            shapeType: "TEXT_BOX",
+            elementProperties: {
+              pageObjectId: slideId,
+              size: {
+                width: { magnitude: inchesToEmu(9), unit: "EMU" },
+                height: { magnitude: inchesToEmu(1), unit: "EMU" }
+              },
+              transform: {
+                scaleX: 1, scaleY: 1,
+                translateX: inchesToEmu(0.5),
+                translateY: inchesToEmu(0.5),
+                unit: "EMU"
+              }
+            }
+          }
+        },
+        {
+          insertText: {
+            objectId: titleBoxId,
+            text: title,
+            insertionIndex: 0
+          }
+        },
+        {
+          updateTextStyle: {
+            objectId: titleBoxId,
+            style: {
+              fontSize: { magnitude: 36, unit: "PT" },
+              bold: true
+            },
+            textRange: { type: "ALL" },
+            fields: "fontSize,bold"
+          }
+        }
+      );
+    }
+
+    if (!bodyElement && body) {
+      const bodyBoxId = "body_" + Date.now();
+      let bodyText = body;
+      if (flags.bullets) {
+        const lines = body.split(/\\n|\n/).filter(l => l.trim());
+        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+      }
+
+      requests.push(
+        {
+          createShape: {
+            objectId: bodyBoxId,
+            shapeType: "TEXT_BOX",
+            elementProperties: {
+              pageObjectId: slideId,
+              size: {
+                width: { magnitude: inchesToEmu(9), unit: "EMU" },
+                height: { magnitude: inchesToEmu(4), unit: "EMU" }
+              },
+              transform: {
+                scaleX: 1, scaleY: 1,
+                translateX: inchesToEmu(0.5),
+                translateY: inchesToEmu(2),
+                unit: "EMU"
+              }
+            }
+          }
+        },
+        {
+          insertText: {
+            objectId: bodyBoxId,
+            text: bodyText,
+            insertionIndex: 0
+          }
+        },
+        {
+          updateTextStyle: {
+            objectId: bodyBoxId,
+            style: {
+              fontSize: { magnitude: 18, unit: "PT" }
+            },
+            textRange: { type: "ALL" },
+            fields: "fontSize"
+          }
+        }
+      );
+    }
+
+    if (requests.length > 0) {
+      await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: { requests }
+      });
+    }
+
+    console.log("\n✅ Slide created with content!");
+    console.log("  Slide ID: " + slideId);
+    if (title) console.log("  Title: " + title);
+    if (body) console.log("  Body: " + body.substring(0, 50) + (body.length > 50 ? "..." : ""));
+  },
+
   // ==================== DELETE SLIDE ====================
   async "delete-slide"(args) {
     const flags = parseFlags(args);
@@ -777,6 +964,7 @@ PRESENTATIONS:
   gslides search "query"                Search presentations
 
 SLIDES:
+  gslides create-slide <id> --title "Title" --body "Content" [--bullets]
   gslides add-slide <id> [--layout TITLE|TITLE_AND_BODY|BLANK]
   gslides delete-slide <id> --slide <slideId>
   gslides duplicate-slide <id> --slide <slideId>
