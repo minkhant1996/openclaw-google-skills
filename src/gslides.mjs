@@ -889,18 +889,21 @@ const commands = {
   async "add-image"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const imageUrl = flags.url || flags.image || flags._[2];
 
-    if (!presentationId || !slideId || !imageUrl) {
-      console.log("Usage: gslides add-image <presentationId> --slide <slideId> --url 'https://...'");
+    if (!presentationId || !slideRef || !imageUrl) {
+      console.log("Usage: gslides add-image <presentationId> --slide <number|id> --url 'https://...'");
       console.log("Options:");
-      console.log("  --x 1        X position in inches");
-      console.log("  --y 1        Y position in inches");
-      console.log("  --width 4    Width in inches");
-      console.log("  --height 3   Height in inches");
+      console.log("  --x 1        X position in inches (default: 1)");
+      console.log("  --y 1        Y position in inches (default: 1)");
+      console.log("  --width 4    Width in inches (default: 4)");
+      console.log("  --height 3   Height in inches (default: 3)");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     const x = parseFloat(flags.x) || 1;
     const y = parseFloat(flags.y) || 1;
@@ -943,18 +946,25 @@ const commands = {
   async "add-shape"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const shapeType = (flags.type || flags.shape || "RECTANGLE").toUpperCase();
 
-    if (!presentationId || !slideId) {
-      console.log("Usage: gslides add-shape <presentationId> --slide <slideId> --type RECTANGLE");
+    if (!presentationId || !slideRef) {
+      console.log("Usage: gslides add-shape <presentationId> --slide <number|id> --type RECTANGLE");
       console.log("Shape types: RECTANGLE, ELLIPSE, ROUND_RECTANGLE, TRIANGLE, ARROW_*, STAR_*, etc.");
       console.log("Options:");
-      console.log("  --x 1, --y 1, --width 2, --height 2");
-      console.log("  --fill red       Fill color");
-      console.log("  --outline blue   Outline color");
+      console.log("  --x 1          X position in inches (default: 1)");
+      console.log("  --y 1          Y position in inches (default: 1)");
+      console.log("  --width 2      Width in inches (default: 2)");
+      console.log("  --height 2     Height in inches (default: 2)");
+      console.log("  --fill red     Fill color");
+      console.log("  --outline blue Outline color");
+      console.log("  --text 'Hi'    Text inside shape");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     const x = parseFloat(flags.x) || 1;
     const y = parseFloat(flags.y) || 1;
@@ -1028,14 +1038,27 @@ const commands = {
   async "add-table"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const rows = parseInt(flags.rows) || 3;
     const cols = parseInt(flags.cols || flags.columns) || 3;
 
-    if (!presentationId || !slideId) {
-      console.log("Usage: gslides add-table <presentationId> --slide <slideId> --rows 3 --cols 3");
+    if (!presentationId || !slideRef) {
+      console.log("Usage: gslides add-table <presentationId> --slide <number|id> --rows 3 --cols 3");
+      console.log("Options:");
+      console.log("  --x 1        X position in inches (default: 1)");
+      console.log("  --y 2        Y position in inches (default: 2)");
+      console.log("  --width 8    Table width in inches (default: 8)");
+      console.log("  --rows 3     Number of rows (default: 3)");
+      console.log("  --cols 3     Number of columns (default: 3)");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
+
+    const x = parseFloat(flags.x) || 1;
+    const y = parseFloat(flags.y) || 2;
+    const width = parseFloat(flags.width) || 8;
 
     const elementId = "table_" + Date.now();
 
@@ -1048,14 +1071,14 @@ const commands = {
             elementProperties: {
               pageObjectId: slideId,
               size: {
-                width: { magnitude: inchesToEmu(8), unit: "EMU" },
+                width: { magnitude: inchesToEmu(width), unit: "EMU" },
                 height: { magnitude: inchesToEmu(rows * 0.5), unit: "EMU" }
               },
               transform: {
                 scaleX: 1,
                 scaleY: 1,
-                translateX: inchesToEmu(1),
-                translateY: inchesToEmu(2),
+                translateX: inchesToEmu(x),
+                translateY: inchesToEmu(y),
                 unit: "EMU"
               }
             },
@@ -1069,19 +1092,23 @@ const commands = {
     console.log("\nTable added!");
     console.log("  Element ID: " + elementId);
     console.log("  Size: " + rows + "x" + cols);
+    console.log("  Position: (" + x + ", " + y + ") inches");
   },
 
   // ==================== SET SLIDE TITLE ====================
   async "set-title"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const title = flags.title || flags.text || flags._[2];
 
-    if (!presentationId || !slideId || !title) {
-      console.log("Usage: gslides set-title <presentationId> --slide <slideId> --title 'Slide Title'");
+    if (!presentationId || !slideRef || !title) {
+      console.log("Usage: gslides set-title <presentationId> --slide <number|id> --title 'Slide Title'");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     // Get the slide to find title placeholder
     const pres = await slides.presentations.get({ presentationId });
@@ -1135,12 +1162,15 @@ const commands = {
   async "duplicate-slide"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags.id || flags._[1];
+    const slideRef = flags.slide || flags.id || flags._[1];
 
-    if (!presentationId || !slideId) {
-      console.log("Usage: gslides duplicate-slide <presentationId> --slide <slideId>");
+    if (!presentationId || !slideRef) {
+      console.log("Usage: gslides duplicate-slide <presentationId> --slide <number|id>");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     const res = await slides.presentations.batchUpdate({
       presentationId,
@@ -1160,13 +1190,16 @@ const commands = {
   async "move-slide"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags.id || flags._[1];
+    const slideRef = flags.slide || flags.id || flags._[1];
     const index = parseInt(flags.index || flags.to);
 
-    if (!presentationId || !slideId || isNaN(index)) {
-      console.log("Usage: gslides move-slide <presentationId> --slide <slideId> --index 0");
+    if (!presentationId || !slideRef || isNaN(index)) {
+      console.log("Usage: gslides move-slide <presentationId> --slide <number|id> --index 0");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     await slides.presentations.batchUpdate({
       presentationId,
@@ -1187,15 +1220,18 @@ const commands = {
   async "set-background"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const color = flags.color;
     const imageUrl = flags.image || flags.url;
 
-    if (!presentationId || !slideId || (!color && !imageUrl)) {
-      console.log("Usage: gslides set-background <presentationId> --slide <slideId> --color blue");
-      console.log("   or: gslides set-background <presentationId> --slide <slideId> --image 'https://...'");
+    if (!presentationId || !slideRef || (!color && !imageUrl)) {
+      console.log("Usage: gslides set-background <presentationId> --slide <number|id> --color blue");
+      console.log("   or: gslides set-background <presentationId> --slide <number|id> --image 'https://...'");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     const request = {
       updatePageProperties: {
