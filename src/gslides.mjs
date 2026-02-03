@@ -266,6 +266,115 @@ const commands = {
     console.log("  Layout: " + predefinedLayout);
   },
 
+  // ==================== CREATE TITLE SLIDE (Title + Subtitle) ====================
+  async "title-slide"(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+    const title = flags.title || flags._[1];
+    const subtitle = flags.subtitle || flags._[2];
+    const index = flags.index !== undefined ? parseInt(flags.index) : 0;
+
+    if (!presentationId || !title) {
+      console.log("Usage: gslides title-slide <presentationId> --title 'Main Title' --subtitle 'Subtitle'");
+      console.log("Options:");
+      console.log("  --index 0    Insert position (default: 0 = beginning)");
+      return;
+    }
+
+    // Create the title slide at specified position
+    const createRes = await slides.presentations.batchUpdate({
+      presentationId,
+      requestBody: {
+        requests: [{
+          createSlide: {
+            insertionIndex: index,
+            slideLayoutReference: { predefinedLayout: "TITLE" }
+          }
+        }]
+      }
+    });
+
+    const slideId = createRes.data.replies[0].createSlide.objectId;
+    console.log("Title slide created: " + slideId);
+
+    // Get the slide to find placeholders
+    const pres = await slides.presentations.get({ presentationId });
+    const slide = pres.data.slides.find(s => s.objectId === slideId);
+
+    if (!slide) {
+      console.log("Error: Could not find created slide");
+      return;
+    }
+
+    const requests = [];
+
+    // Find and fill CENTERED_TITLE placeholder (main title)
+    const titleElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "CENTERED_TITLE" ||
+      el.shape?.placeholder?.type === "TITLE"
+    );
+
+    if (titleElement && title) {
+      const hasText = titleElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: titleElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      requests.push({
+        insertText: {
+          objectId: titleElement.objectId,
+          text: title.replace(/\\n/g, "\n"),
+          insertionIndex: 0
+        }
+      });
+    }
+
+    // Find and fill SUBTITLE placeholder
+    const subtitleElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "SUBTITLE"
+    );
+
+    if (subtitleElement && subtitle) {
+      const hasText = subtitleElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: subtitleElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      requests.push({
+        insertText: {
+          objectId: subtitleElement.objectId,
+          text: subtitle.replace(/\\n/g, "\n"),
+          insertionIndex: 0
+        }
+      });
+    }
+
+    if (requests.length > 0) {
+      await slides.presentations.batchUpdate({
+        presentationId,
+        requestBody: { requests }
+      });
+    }
+
+    console.log("\n✅ Title slide created!");
+    console.log("  Slide ID: " + slideId);
+    console.log("  Position: " + index);
+    console.log("  Title: " + title);
+    if (subtitle) console.log("  Subtitle: " + subtitle);
+  },
+
   // ==================== CREATE SLIDE WITH CONTENT ====================
   async "create-slide"(args) {
     const flags = parseFlags(args);
@@ -349,10 +458,11 @@ const commands = {
       // Convert literal \n to actual newlines
       let bodyText = body.replace(/\\n/g, "\n");
 
-      // If bullets flag, format as bullet points
+      // Clean up bullet text (remove manual • if present)
       if (flags.bullets) {
         const lines = bodyText.split("\n").filter(l => l.trim());
-        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+        // Remove existing • or - prefixes and join with newlines
+        bodyText = lines.map(l => l.replace(/^[•\-\*]\s*/, "").trim()).join("\n");
       }
 
       // Check if placeholder has existing text
@@ -377,6 +487,17 @@ const commands = {
           insertionIndex: 0
         }
       });
+
+      // Apply native bullet formatting if --bullets flag
+      if (flags.bullets) {
+        requests.push({
+          createParagraphBullets: {
+            objectId: bodyElement.objectId,
+            textRange: { type: "ALL" },
+            bulletPreset: "BULLET_DISC_CIRCLE_SQUARE"
+          }
+        });
+      }
     }
 
     // If no placeholders but we have content, add text boxes
@@ -428,7 +549,7 @@ const commands = {
       let bodyText = body.replace(/\\n/g, "\n");
       if (flags.bullets) {
         const lines = bodyText.split("\n").filter(l => l.trim());
-        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+        bodyText = lines.map(l => l.replace(/^[•\-\*]\s*/, "").trim()).join("\n");
       }
 
       requests.push(
@@ -469,6 +590,17 @@ const commands = {
           }
         }
       );
+
+      // Apply native bullet formatting if --bullets flag
+      if (flags.bullets) {
+        requests.push({
+          createParagraphBullets: {
+            objectId: bodyBoxId,
+            textRange: { type: "ALL" },
+            bulletPreset: "BULLET_DISC_CIRCLE_SQUARE"
+          }
+        });
+      }
     }
 
     if (requests.length > 0) {
@@ -1510,10 +1642,13 @@ TEMPLATES:
   gslides copy-slide <srcId> --slide <slideId> --to <destId>
 
 SLIDES:
+  gslides title-slide <id> --title "Main Title" --subtitle "Subtitle" [--index 0]
   gslides create-slide <id> --title "Title" --body "Content" [--bullets]
   gslides update-slide <id> --slide <slideId> --title "New Title" --body "New Body"
   gslides add-slide <id> [--layout TITLE|TITLE_AND_BODY|BLANK]
   gslides delete-slide <id> --slide <slideId>
+
+  Note: --bullets flag creates native Google Slides bullet points
   gslides duplicate-slide <id> --slide <slideId>
   gslides move-slide <id> --slide <slideId> --index 0
   gslides set-title <id> --slide <slideId> --title "Title"
