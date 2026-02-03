@@ -24,6 +24,7 @@ gmail unread                            # Unread only
 gmail starred                           # Starred emails
 gmail read <messageId>                  # Read email
 gmail search "from:someone@email.com"   # Search
+gmail subscriptions                     # List all subscriptions
 ```
 
 ### Send

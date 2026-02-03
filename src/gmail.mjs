@@ -365,6 +365,72 @@ const commands = {
     return this.inbox(["--query", query, "--limit", flags.limit || "20"]);
   },
 
+  // ==================== SUBSCRIPTIONS ====================
+  async subscriptions(args) {
+    const flags = parseFlags(args);
+    const limit = parseInt(flags.limit || flags.n) || 100;
+
+    console.log("\nScanning for email subscriptions...\n");
+
+    // Search for emails with "unsubscribe" - these are subscription/marketing emails
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: limit,
+      q: "unsubscribe"
+    });
+
+    const messages = res.data.messages || [];
+    if (messages.length === 0) {
+      console.log("No subscription emails found.");
+      return;
+    }
+
+    // Extract unique senders
+    const senders = new Map(); // email -> { name, count, lastDate }
+
+    for (const msg of messages) {
+      const detail = await gmail.users.messages.get({
+        userId: "me",
+        id: msg.id,
+        format: "metadata",
+        metadataHeaders: ["From", "Date"]
+      });
+
+      const headers = detail.data.payload.headers;
+      const fromRaw = getHeader(headers, "From");
+      const date = getHeader(headers, "Date");
+
+      // Extract email and name from "Name <email>" format
+      const emailMatch = fromRaw.match(/<([^>]+)>/);
+      const email = emailMatch ? emailMatch[1].toLowerCase() : fromRaw.toLowerCase();
+      const name = fromRaw.replace(/<[^>]+>/, "").trim() || email;
+
+      if (senders.has(email)) {
+        senders.get(email).count++;
+      } else {
+        senders.set(email, { name, count: 1, lastDate: date, email });
+      }
+    }
+
+    // Sort by count (most frequent first)
+    const sorted = [...senders.values()].sort((a, b) => b.count - a.count);
+
+    console.log(`Found ${sorted.length} subscriptions:\n`);
+    console.log("Count | Sender");
+    console.log("------|" + "-".repeat(50));
+
+    for (const s of sorted) {
+      const countStr = String(s.count).padStart(5);
+      console.log(`${countStr} | ${s.name.substring(0, 40)}`);
+      console.log(`      | ${s.email}`);
+    }
+
+    console.log("\n" + "-".repeat(60));
+    console.log(`Total: ${sorted.length} subscriptions from ${messages.length} emails scanned`);
+    console.log("\nTip: Use 'gmail search \"from:sender@email.com\"' to see emails from a specific sender");
+    console.log("Tip: Use 'gmail bulk-delete promotions --confirm' to clean up promo emails");
+  },
+
   // ==================== SEND EMAIL ====================
   async send(args) {
     const flags = parseFlags(args);
@@ -980,6 +1046,7 @@ INBOX & MESSAGES:
 
   gmail read <messageId>                Read a message
   gmail search 'query'                  Search messages
+  gmail subscriptions                   List email subscriptions
 
 COMPOSE & REPLY:
   gmail send --to 'email' --subject 'subj' --body 'message'
