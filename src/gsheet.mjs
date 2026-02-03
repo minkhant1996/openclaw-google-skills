@@ -563,43 +563,51 @@ const commands = {
   async "add-chart"(args) {
     const flags = parseFlags(args);
     const spreadsheetId = extractSpreadsheetId(flags._[0]);
-    const range = flags.range || flags._[1];
+    const labelsRange = flags.labels || flags.domain;
+    const valuesRange = flags.values || flags.data;
     const chartType = (flags.type || "COLUMN").toUpperCase();
     const title = flags.title || "Chart";
 
-    if (!spreadsheetId || !range) {
-      console.log("Usage: gsheet add-chart <spreadsheetId> --range 'A1:B10' --type column --title 'My Chart'");
-      console.log("Types: COLUMN, BAR, LINE, AREA, PIE, SCATTER");
+    if (!spreadsheetId || !labelsRange || !valuesRange) {
+      console.log("Usage: gsheet add-chart <spreadsheetId> --labels 'B2:B5' --values 'D2:D5' --type column --title 'My Chart'");
+      console.log("\nOptions:");
+      console.log("  --labels    Range for labels/categories (e.g., 'B2:B5' for Description)");
+      console.log("  --values    Range for values/data (e.g., 'D2:D5' for Amount)");
+      console.log("  --type      Chart type: COLUMN, BAR, LINE, AREA, PIE, SCATTER");
+      console.log("  --title     Chart title");
+      console.log("\nExample for budget:");
+      console.log("  gsheet add-chart <id> --labels 'B2:B5' --values 'D2:D5' --type pie --title 'Budget'");
       return;
     }
 
-    const gridRange = await parseGridRange(spreadsheetId, range);
+    const labelsGridRange = await parseGridRange(spreadsheetId, labelsRange);
+    const valuesGridRange = await parseGridRange(spreadsheetId, valuesRange);
 
-    const chartSpec = {
-      title,
-      basicChart: {
-        chartType,
-        legendPosition: "BOTTOM_LEGEND",
-        axis: [
-          { position: "BOTTOM_AXIS" },
-          { position: "LEFT_AXIS" }
-        ],
-        domains: [{
-          domain: { sourceRange: { sources: [gridRange] } }
-        }],
-        series: [{
-          series: { sourceRange: { sources: [gridRange] } },
-          targetAxis: "LEFT_AXIS"
-        }]
-      }
-    };
+    let chartSpec = { title };
 
     if (chartType === "PIE") {
-      delete chartSpec.basicChart;
       chartSpec.pieChart = {
         legendPosition: "RIGHT_LEGEND",
-        domain: { sourceRange: { sources: [gridRange] } },
-        series: { sourceRange: { sources: [gridRange] } }
+        pieHole: 0.4, // Donut style
+        domain: { sourceRange: { sources: [labelsGridRange] } },
+        series: { sourceRange: { sources: [valuesGridRange] } }
+      };
+    } else {
+      chartSpec.basicChart = {
+        chartType,
+        legendPosition: "BOTTOM_LEGEND",
+        headerCount: 0,
+        axis: [
+          { position: "BOTTOM_AXIS", title: "" },
+          { position: "LEFT_AXIS", title: "" }
+        ],
+        domains: [{
+          domain: { sourceRange: { sources: [labelsGridRange] } }
+        }],
+        series: [{
+          series: { sourceRange: { sources: [valuesGridRange] } },
+          targetAxis: "LEFT_AXIS"
+        }]
       };
     }
 
@@ -613,10 +621,12 @@ const commands = {
               position: {
                 overlayPosition: {
                   anchorCell: {
-                    sheetId: gridRange.sheetId,
-                    rowIndex: 0,
-                    columnIndex: gridRange.endColumnIndex + 1
-                  }
+                    sheetId: labelsGridRange.sheetId,
+                    rowIndex: 6,
+                    columnIndex: 5
+                  },
+                  widthPixels: 600,
+                  heightPixels: 400
                 }
               }
             }
@@ -626,6 +636,144 @@ const commands = {
     });
 
     console.log("\nChart created: " + title);
+    console.log("  Type: " + chartType);
+    console.log("  Labels: " + labelsRange);
+    console.log("  Values: " + valuesRange);
+  },
+
+  // ==================== DELETE ALL CHARTS ====================
+  async "delete-charts"(args) {
+    const flags = parseFlags(args);
+    const spreadsheetId = extractSpreadsheetId(flags._[0]);
+
+    if (!spreadsheetId) {
+      console.log("Usage: gsheet delete-charts <spreadsheetId>");
+      return;
+    }
+
+    // Get all charts
+    const spreadsheet = await sheets.spreadsheets.get({ spreadsheetId });
+    const requests = [];
+
+    for (const sheet of spreadsheet.data.sheets) {
+      if (sheet.charts) {
+        for (const chart of sheet.charts) {
+          requests.push({
+            deleteEmbeddedObject: { objectId: chart.chartId }
+          });
+        }
+      }
+    }
+
+    if (requests.length === 0) {
+      console.log("\nNo charts found.");
+      return;
+    }
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      resource: { requests }
+    });
+
+    console.log("\nDeleted " + requests.length + " chart(s).");
+  },
+
+  // ==================== BUDGET SUMMARY ====================
+  async "budget-summary"(args) {
+    const flags = parseFlags(args);
+    const spreadsheetId = extractSpreadsheetId(flags._[0]);
+    const amountCol = flags.amount || "D";
+    const categoryCol = flags.category || "C";
+    const startRow = parseInt(flags.start || "2");
+    const endRow = parseInt(flags.end || "100");
+
+    if (!spreadsheetId) {
+      console.log("Usage: gsheet budget-summary <spreadsheetId> [--amount D] [--category C] [--start 2] [--end 100]");
+      console.log("\nCreates a budget summary with Income, Expenses, and Remaining balance.");
+      return;
+    }
+
+    // Read the data
+    const range = `${categoryCol}${startRow}:${amountCol}${endRow}`;
+    const res = await sheets.spreadsheets.values.get({
+      spreadsheetId,
+      range,
+      valueRenderOption: "UNFORMATTED_VALUE"
+    });
+
+    const rows = res.data.values || [];
+    let totalIncome = 0;
+    let totalExpenses = 0;
+
+    for (const row of rows) {
+      const category = row[0] || "";
+      const amount = parseFloat(row[1]) || 0;
+
+      if (category.toLowerCase() === "income") {
+        totalIncome += amount;
+      } else if (category.toLowerCase() === "expense") {
+        totalExpenses += Math.abs(amount);
+      }
+    }
+
+    const remaining = totalIncome - totalExpenses;
+
+    // Write summary to column G
+    const summaryData = [
+      ["Summary", "Amount"],
+      ["Income", totalIncome],
+      ["Expenses", totalExpenses],
+      ["Remaining", remaining]
+    ];
+
+    await sheets.spreadsheets.values.update({
+      spreadsheetId,
+      range: "G1:H4",
+      valueInputOption: "USER_ENTERED",
+      resource: { values: summaryData }
+    });
+
+    // Create a pie chart for the summary
+    const summaryLabelsRange = await parseGridRange(spreadsheetId, "G2:G4");
+    const summaryValuesRange = await parseGridRange(spreadsheetId, "H2:H4");
+
+    await sheets.spreadsheets.batchUpdate({
+      spreadsheetId,
+      resource: {
+        requests: [{
+          addChart: {
+            chart: {
+              spec: {
+                title: "Budget Overview",
+                pieChart: {
+                  legendPosition: "RIGHT_LEGEND",
+                  pieHole: 0.4,
+                  domain: { sourceRange: { sources: [summaryLabelsRange] } },
+                  series: { sourceRange: { sources: [summaryValuesRange] } }
+                }
+              },
+              position: {
+                overlayPosition: {
+                  anchorCell: {
+                    sheetId: summaryLabelsRange.sheetId,
+                    rowIndex: 6,
+                    columnIndex: 6
+                  },
+                  widthPixels: 500,
+                  heightPixels: 350
+                }
+              }
+            }
+          }
+        }]
+      }
+    });
+
+    console.log("\n✅ Budget Summary Created!");
+    console.log("  Income:    $" + totalIncome.toFixed(2));
+    console.log("  Expenses:  $" + totalExpenses.toFixed(2));
+    console.log("  Remaining: $" + remaining.toFixed(2));
+    console.log("\nSummary added to columns G-H with a pie chart.");
   },
 
   // ==================== ADD FILTER ====================
@@ -1027,8 +1175,14 @@ DATA TOOLS:
   gsheet find-replace <id> --find "old" --replace "new"
 
 CHARTS:
-  gsheet add-chart <id> --range "A1:B10" --type column --title "Sales"
+  gsheet add-chart <id> --labels "B2:B5" --values "D2:D5" --type column --title "Sales"
     Types: COLUMN, BAR, LINE, AREA, PIE, SCATTER
+  gsheet delete-charts <id>               Delete all charts
+
+BUDGET:
+  gsheet budget-summary <id>              Create income/expense/remaining summary
+    --amount D                            Column with amounts (default: D)
+    --category C                          Column with category (default: C)
 
 ADVANCED:
   gsheet protect <id> --range "A1:D10" [--warning]
