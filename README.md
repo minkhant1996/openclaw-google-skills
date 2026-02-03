@@ -1,6 +1,6 @@
 # OpenClaw Google Skills
 
-Google Workspace CLI tools for OpenClaw - Calendar, Sheets, Docs, and Gmail automation.
+Google Workspace CLI tools for OpenClaw - Calendar, Sheets, Docs, Slides, and Gmail automation.
 
 ## Quick Install
 
@@ -36,6 +36,15 @@ bash <(curl -s https://raw.githubusercontent.com/minkhant1996/openclaw-google-sk
 - Text formatting (bold, italic, colors)
 - Export to PDF, DOCX, TXT, HTML
 - Copy and share documents
+
+### Google Slides (`gslides`)
+- Create and manage presentations
+- Add, delete, duplicate, move slides
+- Add text boxes, images, shapes, tables
+- Set slide titles and backgrounds
+- Multiple slide layouts
+- Export to PDF, PPTX
+- Copy and share presentations
 
 ### Gmail (`gmail`)
 - Read inbox, sent, starred, drafts
@@ -154,6 +163,34 @@ gdocs table <id> --rows 3 --cols 3
 
 # Export
 gdocs export <id> --format pdf --output document.pdf
+```
+
+### Google Slides
+```bash
+# List presentations
+gslides list
+
+# Create presentation
+gslides create "My Presentation"
+
+# Get info
+gslides info <id>
+
+# Add slides
+gslides add-slide <id> --layout TITLE_AND_BODY
+
+# Add content
+gslides add-text <id> --slide <slideId> --text "Hello" --size 24 --bold
+gslides add-image <id> --slide <slideId> --url "https://..."
+gslides add-shape <id> --slide <slideId> --type RECTANGLE --fill blue
+gslides add-table <id> --slide <slideId> --rows 3 --cols 3
+
+# Set slide properties
+gslides set-title <id> --slide <slideId> --title "Slide Title"
+gslides set-background <id> --slide <slideId> --color blue
+
+# Export
+gslides export <id> --format pdf --output slides.pdf
 ```
 
 ### Gmail

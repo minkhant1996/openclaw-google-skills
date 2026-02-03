@@ -17,14 +17,17 @@ echo "[1/5] Creating directories..."
 mkdir -p "$SKILLS_DIR/google-calendar"
 mkdir -p "$SKILLS_DIR/google-sheets"
 mkdir -p "$SKILLS_DIR/google-docs"
+mkdir -p "$SKILLS_DIR/google-slides"
 mkdir -p "$SKILLS_DIR/gmail"
 mkdir -p "$OPENCLAW_SKILLS/google-calendar"
 mkdir -p "$OPENCLAW_SKILLS/google-sheets"
 mkdir -p "$OPENCLAW_SKILLS/google-docs"
+mkdir -p "$OPENCLAW_SKILLS/google-slides"
 mkdir -p "$OPENCLAW_SKILLS/gmail"
 mkdir -p "$WORKSPACE_SKILLS/google-calendar"
 mkdir -p "$WORKSPACE_SKILLS/google-sheets"
 mkdir -p "$WORKSPACE_SKILLS/google-docs"
+mkdir -p "$WORKSPACE_SKILLS/google-slides"
 mkdir -p "$WORKSPACE_SKILLS/gmail"
 mkdir -p "$BIN_DIR"
 
@@ -33,12 +36,14 @@ echo "[2/5] Downloading skills..."
 curl -sL "$REPO/src/gcal.mjs" -o "$SKILLS_DIR/google-calendar/gcal.mjs"
 curl -sL "$REPO/src/gsheet.mjs" -o "$SKILLS_DIR/google-sheets/gsheet.mjs"
 curl -sL "$REPO/src/gdocs.mjs" -o "$SKILLS_DIR/google-docs/gdocs.mjs"
+curl -sL "$REPO/src/gslides.mjs" -o "$SKILLS_DIR/google-slides/gslides.mjs"
 curl -sL "$REPO/src/gmail.mjs" -o "$SKILLS_DIR/gmail/gmail.mjs"
 
 # Download SKILL.md files
 curl -sL "$REPO/skills/google-calendar/SKILL.md" -o "$SKILLS_DIR/google-calendar/SKILL.md"
 curl -sL "$REPO/skills/google-sheets/SKILL.md" -o "$SKILLS_DIR/google-sheets/SKILL.md"
 curl -sL "$REPO/skills/google-docs/SKILL.md" -o "$SKILLS_DIR/google-docs/SKILL.md"
+curl -sL "$REPO/skills/google-slides/SKILL.md" -o "$SKILLS_DIR/google-slides/SKILL.md"
 curl -sL "$REPO/skills/gmail/SKILL.md" -o "$SKILLS_DIR/gmail/SKILL.md"
 
 # Copy to openclaw directories
@@ -48,6 +53,8 @@ cp "$SKILLS_DIR/google-sheets/gsheet.mjs" "$OPENCLAW_SKILLS/google-sheets/"
 cp "$SKILLS_DIR/google-sheets/SKILL.md" "$OPENCLAW_SKILLS/google-sheets/"
 cp "$SKILLS_DIR/google-docs/gdocs.mjs" "$OPENCLAW_SKILLS/google-docs/"
 cp "$SKILLS_DIR/google-docs/SKILL.md" "$OPENCLAW_SKILLS/google-docs/"
+cp "$SKILLS_DIR/google-slides/gslides.mjs" "$OPENCLAW_SKILLS/google-slides/"
+cp "$SKILLS_DIR/google-slides/SKILL.md" "$OPENCLAW_SKILLS/google-slides/"
 cp "$SKILLS_DIR/gmail/gmail.mjs" "$OPENCLAW_SKILLS/gmail/"
 cp "$SKILLS_DIR/gmail/SKILL.md" "$OPENCLAW_SKILLS/gmail/"
 
@@ -57,12 +64,14 @@ cp "$SKILLS_DIR/google-sheets/gsheet.mjs" "$WORKSPACE_SKILLS/google-sheets/"
 cp "$SKILLS_DIR/google-sheets/SKILL.md" "$WORKSPACE_SKILLS/google-sheets/"
 cp "$SKILLS_DIR/google-docs/gdocs.mjs" "$WORKSPACE_SKILLS/google-docs/"
 cp "$SKILLS_DIR/google-docs/SKILL.md" "$WORKSPACE_SKILLS/google-docs/"
+cp "$SKILLS_DIR/google-slides/gslides.mjs" "$WORKSPACE_SKILLS/google-slides/"
+cp "$SKILLS_DIR/google-slides/SKILL.md" "$WORKSPACE_SKILLS/google-slides/"
 cp "$SKILLS_DIR/gmail/gmail.mjs" "$WORKSPACE_SKILLS/gmail/"
 cp "$SKILLS_DIR/gmail/SKILL.md" "$WORKSPACE_SKILLS/gmail/"
 
 # Install npm dependencies
 echo "[3/5] Installing dependencies..."
-for skill_dir in "google-calendar" "google-sheets" "google-docs" "gmail"; do
+for skill_dir in "google-calendar" "google-sheets" "google-docs" "google-slides" "gmail"; do
   cd "$SKILLS_DIR/$skill_dir"
   if [ ! -f "package.json" ]; then
     npm init -y > /dev/null 2>&1
@@ -94,6 +103,13 @@ node gdocs.mjs "$@"
 EOF
 chmod +x "$BIN_DIR/gdocs"
 
+cat > "$BIN_DIR/gslides" << 'EOF'
+#!/bin/bash
+cd ~/openclaw/skills/google-slides
+node gslides.mjs "$@"
+EOF
+chmod +x "$BIN_DIR/gslides"
+
 cat > "$BIN_DIR/gmail" << 'EOF'
 #!/bin/bash
 cd ~/openclaw/skills/gmail
@@ -117,12 +133,13 @@ echo "  Installation Complete!"
 echo "========================================"
 echo ""
 echo "Commands available:"
-echo "  gcal   - Google Calendar"
-echo "  gsheet - Google Sheets"
-echo "  gdocs  - Google Docs"
-echo "  gmail  - Gmail"
+echo "  gcal    - Google Calendar"
+echo "  gsheet  - Google Sheets"
+echo "  gdocs   - Google Docs"
+echo "  gslides - Google Slides"
+echo "  gmail   - Gmail"
 echo ""
-echo "Run 'gcal help', 'gsheet help', 'gdocs help', or 'gmail help' for usage."
+echo "Run '<command> help' for usage (e.g., 'gcal help')."
 echo ""
 echo "NOTE: You need to set up OAuth credentials first."
 echo "Place your credentials in:"

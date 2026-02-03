@@ -18,22 +18,26 @@ echo "Removing skills..."
 rm -rf "$HOME/openclaw/skills/google-calendar"
 rm -rf "$HOME/openclaw/skills/google-sheets"
 rm -rf "$HOME/openclaw/skills/google-docs"
+rm -rf "$HOME/openclaw/skills/google-slides"
 rm -rf "$HOME/openclaw/skills/gmail"
 
 rm -rf "$HOME/.openclaw/skills/google-calendar"
 rm -rf "$HOME/.openclaw/skills/google-sheets"
 rm -rf "$HOME/.openclaw/skills/google-docs"
+rm -rf "$HOME/.openclaw/skills/google-slides"
 rm -rf "$HOME/.openclaw/skills/gmail"
 
 rm -rf "$HOME/.openclaw/workspace/skills/google-calendar"
 rm -rf "$HOME/.openclaw/workspace/skills/google-sheets"
 rm -rf "$HOME/.openclaw/workspace/skills/google-docs"
+rm -rf "$HOME/.openclaw/workspace/skills/google-slides"
 rm -rf "$HOME/.openclaw/workspace/skills/gmail"
 
 # Remove CLI commands
 rm -f "$HOME/bin/gcal"
 rm -f "$HOME/bin/gsheet"
 rm -f "$HOME/bin/gdocs"
+rm -f "$HOME/bin/gslides"
 rm -f "$HOME/bin/gmail"
 
 echo ""

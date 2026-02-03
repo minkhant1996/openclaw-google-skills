@@ -21,6 +21,7 @@
     "gcal": "./src/gcal.mjs",
     "gsheet": "./src/gsheet.mjs",
     "gdocs": "./src/gdocs.mjs",
+    "gslides": "./src/gslides.mjs",
     "gmail": "./src/gmail.mjs"
   },
   "type": "module",
