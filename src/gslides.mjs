@@ -315,10 +315,18 @@ const commands = {
     );
 
     if (titleElement && title) {
+      // First delete any existing placeholder text
+      requests.push({
+        deleteText: {
+          objectId: titleElement.objectId,
+          textRange: { type: "ALL" }
+        }
+      });
+      // Then insert new text
       requests.push({
         insertText: {
           objectId: titleElement.objectId,
-          text: title,
+          text: title.replace(/\\n/g, "\n"),
           insertionIndex: 0
         }
       });
@@ -331,14 +339,23 @@ const commands = {
     );
 
     if (bodyElement && body) {
-      let bodyText = body;
+      // Convert literal \n to actual newlines
+      let bodyText = body.replace(/\\n/g, "\n");
 
       // If bullets flag, format as bullet points
       if (flags.bullets) {
-        const lines = body.split(/\\n|\n/).filter(l => l.trim());
+        const lines = bodyText.split("\n").filter(l => l.trim());
         bodyText = lines.map(l => "• " + l.trim()).join("\n");
       }
 
+      // First delete any existing placeholder text
+      requests.push({
+        deleteText: {
+          objectId: bodyElement.objectId,
+          textRange: { type: "ALL" }
+        }
+      });
+      // Then insert new text
       requests.push({
         insertText: {
           objectId: bodyElement.objectId,
@@ -394,9 +411,9 @@ const commands = {
 
     if (!bodyElement && body) {
       const bodyBoxId = "body_" + Date.now();
-      let bodyText = body;
+      let bodyText = body.replace(/\\n/g, "\n");
       if (flags.bullets) {
-        const lines = body.split(/\\n|\n/).filter(l => l.trim());
+        const lines = bodyText.split("\n").filter(l => l.trim());
         bodyText = lines.map(l => "• " + l.trim()).join("\n");
       }
 
