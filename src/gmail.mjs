@@ -686,10 +686,74 @@ const commands = {
   },
 
   // ==================== TRASH/DELETE ====================
+  // Protected labels - cannot delete emails with these labels
+  // Only CATEGORY_SOCIAL and CATEGORY_PROMOTIONS can be deleted freely
+
+  async _checkDeleteProtection(messageId, forceFlag) {
+    // Get message labels
+    const msg = await gmail.users.messages.get({
+      userId: "me",
+      id: messageId,
+      format: "metadata",
+      metadataHeaders: ["Subject"]
+    });
+
+    const labels = msg.data.labelIds || [];
+    const subject = getHeader(msg.data.payload?.headers || [], "Subject") || "(No subject)";
+
+    // Deletable categories (safe to delete)
+    const SAFE_CATEGORIES = ["CATEGORY_SOCIAL", "CATEGORY_PROMOTIONS"];
+
+    // Protected labels (cannot delete unless forced)
+    const PROTECTED_LABELS = ["IMPORTANT", "STARRED", "CATEGORY_PERSONAL", "CATEGORY_UPDATES"];
+
+    // Check if it's in a safe category
+    const inSafeCategory = labels.some(l => SAFE_CATEGORIES.includes(l));
+
+    // Check if it has protected labels
+    const protectedLabel = labels.find(l => PROTECTED_LABELS.includes(l));
+
+    if (protectedLabel && !forceFlag) {
+      const labelName = protectedLabel.replace("CATEGORY_", "").toLowerCase();
+      return {
+        allowed: false,
+        reason: `\n🛡️  PROTECTED EMAIL - Cannot delete!\n` +
+          `  Subject: "${subject.substring(0, 50)}"\n` +
+          `  Reason: Email is marked as "${labelName}"\n\n` +
+          `Only Social and Promotions emails can be deleted.\n` +
+          `Use --force to override (not recommended).`
+      };
+    }
+
+    if (!inSafeCategory && !forceFlag) {
+      return {
+        allowed: false,
+        reason: `\n⚠️  DELETE RESTRICTED\n` +
+          `  Subject: "${subject.substring(0, 50)}"\n` +
+          `  Labels: ${labels.join(", ") || "none"}\n\n` +
+          `Only Social and Promotions emails can be deleted freely.\n` +
+          `Use --force to override protection.`
+      };
+    }
+
+    return { allowed: true, subject, labels };
+  },
+
   async trash(args) {
-    const messageId = args[0];
+    const flags = parseFlags(args);
+    const messageId = flags._[0] || args[0];
+    const forceFlag = flags.force || flags.f;
+
     if (!messageId) {
-      console.log("Usage: gmail trash <messageId>");
+      console.log("Usage: gmail trash <messageId> [--force]");
+      console.log("\nNote: Only Social/Promotions can be trashed. Important emails are protected.");
+      return;
+    }
+
+    // Check protection
+    const check = await this._checkDeleteProtection(messageId, forceFlag);
+    if (!check.allowed) {
+      console.log(check.reason);
       return;
     }
 
@@ -699,20 +763,32 @@ const commands = {
     });
 
     console.log("\nMessage moved to trash.");
+    if (check.subject) {
+      console.log("  Subject: " + check.subject.substring(0, 50));
+    }
   },
 
   async delete(args) {
     const flags = parseFlags(args);
     const messageId = flags._[0];
+    const forceFlag = flags.force || flags.f;
 
     if (!messageId) {
-      console.log("Usage: gmail delete <messageId> --confirm");
+      console.log("Usage: gmail delete <messageId> --confirm [--force]");
       console.log("Warning: This permanently deletes the message!");
+      console.log("\nNote: Only Social/Promotions can be deleted. Important emails are protected.");
       return;
     }
 
     if (!flags.confirm) {
       console.log("Add --confirm to permanently delete this message.");
+      return;
+    }
+
+    // Check protection
+    const check = await this._checkDeleteProtection(messageId, forceFlag);
+    if (!check.allowed) {
+      console.log(check.reason);
       return;
     }
 
@@ -722,6 +798,60 @@ const commands = {
     });
 
     console.log("\nMessage permanently deleted.");
+  },
+
+  // Bulk delete for promotions/social only
+  async "bulk-delete"(args) {
+    const flags = parseFlags(args);
+    const category = flags._[0] || flags.category;
+    const limit = parseInt(flags.limit || flags.n) || 10;
+
+    const validCategories = ["social", "promotions"];
+
+    if (!category || !validCategories.includes(category.toLowerCase())) {
+      console.log("Usage: gmail bulk-delete <category> [--limit 10] --confirm");
+      console.log("\nCategories: social, promotions");
+      console.log("Example: gmail bulk-delete promotions --limit 50 --confirm");
+      return;
+    }
+
+    if (!flags.confirm) {
+      console.log("Add --confirm to proceed with bulk delete.");
+      return;
+    }
+
+    const labelId = "CATEGORY_" + category.toUpperCase();
+
+    // List messages in category
+    const res = await gmail.users.messages.list({
+      userId: "me",
+      maxResults: limit,
+      labelIds: [labelId]
+    });
+
+    const messages = res.data.messages || [];
+
+    if (messages.length === 0) {
+      console.log("\nNo messages found in " + category);
+      return;
+    }
+
+    console.log(`\nDeleting ${messages.length} ${category} emails...`);
+
+    let deleted = 0;
+    for (const msg of messages) {
+      try {
+        await gmail.users.messages.trash({
+          userId: "me",
+          id: msg.id
+        });
+        deleted++;
+      } catch (e) {
+        console.log("  Failed: " + msg.id);
+      }
+    }
+
+    console.log(`\n✅ Moved ${deleted} emails to trash.`);
   },
 
   // ==================== MARK READ/UNREAD ====================
@@ -865,14 +995,21 @@ ORGANIZE:
   gmail star <messageId>                Star a message
   gmail unstar <messageId>              Remove star
   gmail archive <messageId>             Archive (remove from inbox)
-  gmail trash <messageId>               Move to trash
-  gmail delete <messageId> --confirm    Permanently delete
 
   gmail mark-read <messageId>           Mark as read
   gmail mark-unread <messageId>         Mark as unread
 
   gmail labels                          List all labels
   gmail label <messageId> --add 'Label1' --remove 'Label2'
+
+DELETE (Protected):
+  gmail trash <messageId>               Move to trash (Social/Promo only)
+  gmail delete <messageId> --confirm    Permanently delete (Social/Promo only)
+  gmail bulk-delete social --limit 50 --confirm
+  gmail bulk-delete promotions --limit 100 --confirm
+
+  Protected: Important, Starred, Personal, Updates emails are protected.
+  Use --force to override (not recommended).
 
 CONFIG & SETTINGS:
   gmail config                          Show current settings

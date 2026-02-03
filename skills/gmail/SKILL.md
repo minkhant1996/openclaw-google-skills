@@ -44,10 +44,23 @@ gmail draft --to "email" --subject "Draft" --body "..."
 gmail star <messageId>
 gmail unstar <messageId>
 gmail archive <messageId>
-gmail trash <messageId>
 gmail mark-read <messageId>
 gmail labels
 ```
+
+### Delete (Protected)
+```bash
+gmail trash <messageId>                 # Social/Promo only
+gmail delete <messageId> --confirm      # Permanent delete
+gmail bulk-delete promotions --limit 50 --confirm
+gmail bulk-delete social --limit 100 --confirm
+```
+
+**Protected emails** (cannot delete without --force):
+- Important, Starred, Personal, Updates
+
+**Allowed to delete freely:**
+- Social, Promotions
 
 ### Safety & Config
 ```bash
