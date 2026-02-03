@@ -98,6 +98,13 @@ function applySignature(body, config) {
   return body;
 }
 
+// Convert escaped newlines to actual newlines
+function parseNewlines(text) {
+  if (!text) return text;
+  // Replace literal \n with actual newlines (but not already escaped \\n)
+  return text.replace(/\\n/g, '\n');
+}
+
 function getAuth() {
   const creds = JSON.parse(fs.readFileSync(CREDS_PATH));
   const tokens = JSON.parse(fs.readFileSync(TOKEN_PATH));
@@ -441,14 +448,21 @@ const commands = {
     const cc = flags.cc;
     const bcc = flags.bcc;
     const skipCheck = flags["no-check"] || flags.force;
+    const preview = flags.preview || flags.p;
+    const confirmed = flags.confirm || flags.confirmed || flags.y;
 
     if (!to) {
       console.log("Usage: gmail send --to 'email@example.com' --subject 'Subject' --body 'Message'");
       console.log("\nOptions:");
+      console.log("  --preview     Show email preview without sending (for approval)");
+      console.log("  --confirm     Send the email (required after preview)");
       console.log("  --no-check    Skip placeholder detection");
       console.log("\nTip: Set your signature in ~/.openclaw/credentials/gmail-config.json");
       return;
     }
+
+    // Parse escaped newlines (\n -> actual newlines)
+    body = parseNewlines(body);
 
     // Check for placeholders unless skipped
     if (!skipCheck) {
@@ -462,6 +476,26 @@ const commands = {
 
     // Apply signature if configured
     body = applySignature(body, config);
+
+    // Preview mode - show email without sending
+    if (preview || !confirmed) {
+      console.log("\n" + "=".repeat(60));
+      console.log("EMAIL PREVIEW (Not sent yet)");
+      console.log("=".repeat(60));
+      console.log("To: " + to);
+      if (cc) console.log("Cc: " + cc);
+      if (bcc) console.log("Bcc: " + bcc);
+      console.log("Subject: " + subject);
+      console.log("-".repeat(60));
+      console.log(body);
+      console.log("=".repeat(60));
+
+      if (!confirmed) {
+        console.log("\nTo send this email, run the same command with --confirm flag.");
+        console.log("Example: gmail send --to '...' --subject '...' --body '...' --confirm");
+        return;
+      }
+    }
 
     let rawMessage = `To: ${to}\r\n`;
     if (cc) rawMessage += `Cc: ${cc}\r\n`;
@@ -488,11 +522,15 @@ const commands = {
     const messageId = flags._[0];
     let body = flags.body || flags.message || flags.m || flags._[1];
     const skipCheck = flags["no-check"] || flags.force;
+    const confirmed = flags.confirm || flags.confirmed || flags.y;
 
     if (!messageId || !body) {
-      console.log("Usage: gmail reply <messageId> --body 'Your reply message'");
+      console.log("Usage: gmail reply <messageId> --body 'Your reply message' --confirm");
       return;
     }
+
+    // Parse escaped newlines
+    body = parseNewlines(body);
 
     // Check for placeholders unless skipped
     if (!skipCheck) {
@@ -527,6 +565,20 @@ const commands = {
 
     const replySubject = subject.startsWith("Re:") ? subject : "Re: " + subject;
 
+    // Preview mode - show reply without sending
+    if (!confirmed) {
+      console.log("\n" + "=".repeat(60));
+      console.log("REPLY PREVIEW (Not sent yet)");
+      console.log("=".repeat(60));
+      console.log("To: " + replyTo);
+      console.log("Subject: " + replySubject);
+      console.log("-".repeat(60));
+      console.log(body);
+      console.log("=".repeat(60));
+      console.log("\nTo send this reply, run the same command with --confirm flag.");
+      return;
+    }
+
     let rawMessage = `To: ${replyTo}\r\n`;
     rawMessage += `Subject: ${replySubject}\r\n`;
     rawMessage += `In-Reply-To: ${messageIdHeader}\r\n`;
@@ -555,11 +607,15 @@ const commands = {
     const to = flags.to || flags._[1];
     let note = flags.note || flags.body || "";
     const skipCheck = flags["no-check"] || flags.force;
+    const confirmed = flags.confirm || flags.confirmed || flags.y;
 
     if (!messageId || !to) {
-      console.log("Usage: gmail forward <messageId> --to 'email@example.com' [--note 'Your note']");
+      console.log("Usage: gmail forward <messageId> --to 'email@example.com' [--note 'Your note'] --confirm");
       return;
     }
+
+    // Parse escaped newlines in note
+    note = parseNewlines(note);
 
     // Check for placeholders in note unless skipped
     if (!skipCheck && note) {
@@ -598,6 +654,20 @@ const commands = {
     body += "Subject: " + origSubject + "\r\n\r\n";
     body += origBody;
 
+    // Preview mode - show forward without sending
+    if (!confirmed) {
+      console.log("\n" + "=".repeat(60));
+      console.log("FORWARD PREVIEW (Not sent yet)");
+      console.log("=".repeat(60));
+      console.log("To: " + to);
+      console.log("Subject: " + fwdSubject);
+      console.log("-".repeat(60));
+      console.log(body.substring(0, 1000) + (body.length > 1000 ? "\n... (truncated)" : ""));
+      console.log("=".repeat(60));
+      console.log("\nTo forward this message, run the same command with --confirm flag.");
+      return;
+    }
+
     let rawMessage = `To: ${to}\r\n`;
     rawMessage += `Subject: ${fwdSubject}\r\n`;
     rawMessage += `Content-Type: text/plain; charset=utf-8\r\n\r\n`;
@@ -626,6 +696,9 @@ const commands = {
       console.log("Usage: gmail draft --to 'email@example.com' --subject 'Subject' --body 'Message'");
       return;
     }
+
+    // Parse escaped newlines
+    body = parseNewlines(body);
 
     // Check for placeholders (warn but don't block for drafts)
     if (!skipCheck) {
@@ -1048,14 +1121,24 @@ INBOX & MESSAGES:
   gmail search 'query'                  Search messages
   gmail subscriptions                   List email subscriptions
 
-COMPOSE & REPLY:
-  gmail send --to 'email' --subject 'subj' --body 'message'
-    [--cc 'email'] [--bcc 'email'] [--no-check]
+COMPOSE & REPLY (Two-Step Confirmation):
+  Step 1 - Preview:
+    gmail send --to 'email' --subject 'subj' --body 'message'
+    (Shows preview without sending)
 
-  gmail reply <messageId> --body 'reply message' [--no-check]
-  gmail forward <messageId> --to 'email' [--note 'note'] [--no-check]
-  gmail draft --to 'email' --subject 'subj' --body 'message'
+  Step 2 - Send:
+    gmail send --to 'email' --subject 'subj' --body 'message' --confirm
+    (Actually sends the email)
 
+  Full options:
+    gmail send --to 'email' --subject 'subj' --body 'message' --confirm
+      [--cc 'email'] [--bcc 'email'] [--no-check]
+
+    gmail reply <messageId> --body 'reply' --confirm
+    gmail forward <messageId> --to 'email' --confirm [--note 'note']
+    gmail draft --to 'email' --subject 'subj' --body 'message'
+
+  Note: Use \\n for line breaks in body text
   Note: --no-check skips placeholder detection
 
 ORGANIZE:
