@@ -101,6 +101,97 @@ const commands = {
     console.log("  Slides: " + res.data.slides.length);
   },
 
+  // ==================== READ SLIDE CONTENT ====================
+  async "read-slide"(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+    const slideIndex = flags.slide || flags.index || flags._[1];
+
+    if (!presentationId) {
+      console.log("Usage: gslides read-slide <presentationId> [--slide 1]");
+      console.log("       gslides read-slide <presentationId> --all");
+      return;
+    }
+
+    const res = await slides.presentations.get({ presentationId });
+    const pres = res.data;
+
+    console.log("\n" + pres.title);
+    console.log("=".repeat(50));
+
+    const slidesToRead = flags.all
+      ? pres.slides
+      : slideIndex
+        ? [pres.slides[parseInt(slideIndex) - 1]]
+        : pres.slides;
+
+    if (!slidesToRead || slidesToRead.length === 0) {
+      console.log("No slides found.");
+      return;
+    }
+
+    slidesToRead.forEach((slide, idx) => {
+      const actualIndex = flags.all ? idx : (parseInt(slideIndex) - 1 || idx);
+      console.log("\n--- Slide " + (actualIndex + 1) + " [" + slide.objectId + "] ---");
+
+      if (!slide.pageElements || slide.pageElements.length === 0) {
+        console.log("  (Empty slide)");
+        return;
+      }
+
+      for (const element of slide.pageElements) {
+        // Text boxes and shapes with text
+        if (element.shape?.text?.textElements) {
+          const placeholderType = element.shape?.placeholder?.type || "TEXT";
+          const text = element.shape.text.textElements
+            .filter(t => t.textRun?.content)
+            .map(t => t.textRun.content)
+            .join("")
+            .trim();
+
+          if (text) {
+            console.log("\n  [" + placeholderType + "]");
+            console.log("  " + text.replace(/\n/g, "\n  "));
+          }
+        }
+
+        // Tables
+        if (element.table) {
+          console.log("\n  [TABLE " + element.table.rows + "x" + element.table.columns + "]");
+          for (const row of element.table.tableRows || []) {
+            const cells = row.tableCells?.map(cell => {
+              const text = cell.text?.textElements
+                ?.filter(t => t.textRun?.content)
+                .map(t => t.textRun.content)
+                .join("")
+                .trim() || "";
+              return text.substring(0, 20);
+            }) || [];
+            console.log("  | " + cells.join(" | ") + " |");
+          }
+        }
+
+        // Images
+        if (element.image) {
+          console.log("\n  [IMAGE]");
+          if (element.image.sourceUrl) {
+            console.log("  URL: " + element.image.sourceUrl.substring(0, 60) + "...");
+          }
+        }
+      }
+    });
+
+    console.log("\n" + "=".repeat(50));
+    console.log("Total: " + pres.slides.length + " slides");
+  },
+
+  // ==================== READ ALL SLIDES (alias) ====================
+  async read(args) {
+    const flags = parseFlags(args);
+    flags.all = true;
+    return this["read-slide"]([...args, "--all"]);
+  },
+
   // ==================== GET PRESENTATION INFO ====================
   async info(args) {
     const presentationId = extractPresentationId(args[0]);
@@ -961,6 +1052,8 @@ PRESENTATIONS:
   gslides list [--limit 20]             List your presentations
   gslides create "Title"                Create new presentation
   gslides info <id>                     Get presentation details
+  gslides read <id>                     Read all slide content
+  gslides read-slide <id> --slide 1     Read specific slide
   gslides search "query"                Search presentations
 
 SLIDES:

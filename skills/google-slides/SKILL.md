@@ -22,6 +22,8 @@ Use the `gslides` command for ALL presentation-related tasks.
 gslides list                            # List presentations
 gslides create "Title"                  # Create new
 gslides info <id>                       # Get details
+gslides read <id>                       # Read all slide content
+gslides read-slide <id> --slide 1       # Read specific slide
 ```
 
 ### Slides
