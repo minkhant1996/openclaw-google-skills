@@ -1183,6 +1183,312 @@ const commands = {
     });
   },
 
+  // ==================== CREATE FROM TEMPLATE ====================
+  async "from-template"(args) {
+    const flags = parseFlags(args);
+    const templateId = extractPresentationId(flags._[0] || flags.template);
+    const title = flags.title || flags.name || flags._[1] || "New Presentation";
+
+    if (!templateId) {
+      console.log("Usage: gslides from-template <templateId> --title 'New Presentation Name'");
+      console.log("\nThis copies a template presentation and gives it a new name.");
+      console.log("All slides, masters, layouts, and styling are preserved.");
+      return;
+    }
+
+    // Copy the template
+    const res = await drive.files.copy({
+      fileId: templateId,
+      requestBody: { name: title }
+    });
+
+    const newId = res.data.id;
+
+    // Get info about the new presentation
+    const pres = await slides.presentations.get({ presentationId: newId });
+
+    console.log("\n✅ Created from template!");
+    console.log("  Title: " + title);
+    console.log("  ID: " + newId);
+    console.log("  Link: https://docs.google.com/presentation/d/" + newId + "/edit");
+    console.log("  Slides: " + pres.data.slides.length);
+  },
+
+  // ==================== LIST MASTERS AND LAYOUTS ====================
+  async masters(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+
+    if (!presentationId) {
+      console.log("Usage: gslides masters <presentationId>");
+      console.log("\nLists all master slides and their layouts.");
+      return;
+    }
+
+    const res = await slides.presentations.get({ presentationId });
+    const pres = res.data;
+
+    console.log("\n" + pres.title);
+    console.log("=".repeat(50));
+
+    // List masters
+    console.log("\nMASTER SLIDES:");
+    for (const master of pres.masters || []) {
+      console.log("\n  Master: " + master.objectId);
+
+      // Get master background color
+      if (master.pageProperties?.pageBackgroundFill?.solidFill) {
+        const color = master.pageProperties.pageBackgroundFill.solidFill.color?.rgbColor;
+        if (color) {
+          console.log("    Background: rgb(" +
+            Math.round((color.red || 0) * 255) + ", " +
+            Math.round((color.green || 0) * 255) + ", " +
+            Math.round((color.blue || 0) * 255) + ")");
+        }
+      }
+
+      // List layouts for this master
+      console.log("    Layouts:");
+      for (const layout of pres.layouts || []) {
+        if (layout.masterObjectId === master.objectId) {
+          const layoutName = layout.layoutProperties?.displayName || layout.layoutProperties?.name || "Unnamed";
+          console.log("      - " + layoutName + " [" + layout.objectId + "]");
+        }
+      }
+    }
+
+    // Theme colors
+    console.log("\nTHEME COLORS:");
+    const master = pres.masters?.[0];
+    if (master?.pageProperties?.colorScheme?.colors) {
+      for (const colorEntry of master.pageProperties.colorScheme.colors) {
+        const rgb = colorEntry.color?.rgbColor;
+        if (rgb) {
+          const hex = "#" +
+            Math.round((rgb.red || 0) * 255).toString(16).padStart(2, "0") +
+            Math.round((rgb.green || 0) * 255).toString(16).padStart(2, "0") +
+            Math.round((rgb.blue || 0) * 255).toString(16).padStart(2, "0");
+          console.log("  " + (colorEntry.type || "COLOR") + ": " + hex.toUpperCase());
+        }
+      }
+    }
+
+    console.log("\n" + "=".repeat(50));
+  },
+
+  // ==================== APPLY LAYOUT TO SLIDE ====================
+  async "apply-layout"(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+    const slideId = flags.slide;
+    const layoutId = flags.layout;
+
+    if (!presentationId || !slideId || !layoutId) {
+      console.log("Usage: gslides apply-layout <presentationId> --slide <slideId> --layout <layoutId>");
+      console.log("\nChanges the layout of an existing slide.");
+      console.log("Use 'gslides masters <id>' to see available layout IDs.");
+      return;
+    }
+
+    await slides.presentations.batchUpdate({
+      presentationId,
+      requestBody: {
+        requests: [{
+          updateSlideProperties: {
+            objectId: slideId,
+            slideProperties: {
+              layoutObjectId: layoutId
+            },
+            fields: "layoutObjectId"
+          }
+        }]
+      }
+    });
+
+    console.log("\n✅ Layout applied!");
+    console.log("  Slide: " + slideId);
+    console.log("  Layout: " + layoutId);
+  },
+
+  // ==================== COPY SLIDE BETWEEN PRESENTATIONS ====================
+  async "copy-slide"(args) {
+    const flags = parseFlags(args);
+    const sourceId = extractPresentationId(flags._[0] || flags.from);
+    const slideId = flags.slide;
+    const destId = extractPresentationId(flags.to || flags.dest);
+    const insertIndex = flags.index !== undefined ? parseInt(flags.index) : undefined;
+
+    if (!sourceId || !slideId || !destId) {
+      console.log("Usage: gslides copy-slide <sourceId> --slide <slideId> --to <destId>");
+      console.log("\nCopies a slide from one presentation to another.");
+      console.log("Options:");
+      console.log("  --index N    Insert at specific position (0-based)");
+      return;
+    }
+
+    const request = {
+      duplicateObject: {
+        objectId: slideId,
+        objectIds: {}
+      }
+    };
+
+    // First duplicate within source, then we need different approach
+    // Actually, Slides API doesn't support cross-presentation copy directly
+    // We need to use a workaround: export slide elements and recreate
+
+    // Better approach: use the Slides API's internal mechanism
+    // by getting slide content and recreating it
+
+    // Get source slide
+    const sourcePres = await slides.presentations.get({ presentationId: sourceId });
+    const sourceSlide = sourcePres.data.slides.find(s => s.objectId === slideId);
+
+    if (!sourceSlide) {
+      console.log("Error: Slide not found: " + slideId);
+      return;
+    }
+
+    // Create a new slide in destination
+    const createReq = {
+      createSlide: {}
+    };
+    if (insertIndex !== undefined) {
+      createReq.createSlide.insertionIndex = insertIndex;
+    }
+
+    const createRes = await slides.presentations.batchUpdate({
+      presentationId: destId,
+      requestBody: { requests: [createReq] }
+    });
+
+    const newSlideId = createRes.data.replies[0].createSlide.objectId;
+
+    // Copy background if exists
+    const requests = [];
+    if (sourceSlide.pageProperties?.pageBackgroundFill) {
+      requests.push({
+        updatePageProperties: {
+          objectId: newSlideId,
+          pageProperties: {
+            pageBackgroundFill: sourceSlide.pageProperties.pageBackgroundFill
+          },
+          fields: "pageBackgroundFill"
+        }
+      });
+    }
+
+    // Copy page elements (text boxes, shapes, images)
+    for (const element of sourceSlide.pageElements || []) {
+      const newElementId = "copied_" + Date.now() + "_" + Math.random().toString(36).substr(2, 9);
+
+      if (element.shape) {
+        // Copy shape/text box
+        requests.push({
+          createShape: {
+            objectId: newElementId,
+            shapeType: element.shape.shapeType || "TEXT_BOX",
+            elementProperties: {
+              pageObjectId: newSlideId,
+              size: element.size,
+              transform: element.transform
+            }
+          }
+        });
+
+        // Add text content if exists
+        const textContent = element.shape.text?.textElements
+          ?.filter(t => t.textRun?.content)
+          .map(t => t.textRun.content)
+          .join("") || "";
+
+        if (textContent.trim()) {
+          requests.push({
+            insertText: {
+              objectId: newElementId,
+              text: textContent,
+              insertionIndex: 0
+            }
+          });
+        }
+      } else if (element.image) {
+        // Copy image
+        if (element.image.sourceUrl) {
+          requests.push({
+            createImage: {
+              objectId: newElementId,
+              url: element.image.sourceUrl,
+              elementProperties: {
+                pageObjectId: newSlideId,
+                size: element.size,
+                transform: element.transform
+              }
+            }
+          });
+        }
+      } else if (element.table) {
+        // Copy table structure
+        requests.push({
+          createTable: {
+            objectId: newElementId,
+            elementProperties: {
+              pageObjectId: newSlideId,
+              size: element.size,
+              transform: element.transform
+            },
+            rows: element.table.rows,
+            columns: element.table.columns
+          }
+        });
+      }
+    }
+
+    if (requests.length > 0) {
+      try {
+        await slides.presentations.batchUpdate({
+          presentationId: destId,
+          requestBody: { requests }
+        });
+      } catch (e) {
+        console.log("Warning: Some elements could not be copied: " + e.message);
+      }
+    }
+
+    console.log("\n✅ Slide copied!");
+    console.log("  Source: " + sourceId + " slide " + slideId);
+    console.log("  Destination: " + destId);
+    console.log("  New Slide ID: " + newSlideId);
+  },
+
+  // ==================== LIST TEMPLATES (presentations tagged as template) ====================
+  async templates(args) {
+    const flags = parseFlags(args);
+    const limit = parseInt(flags.limit) || 20;
+
+    // Search for presentations with "template" in the name
+    const res = await drive.files.list({
+      q: "mimeType='application/vnd.google-apps.presentation' and name contains 'template'",
+      pageSize: limit,
+      fields: "files(id, name, modifiedTime, webViewLink)",
+      orderBy: "modifiedTime desc"
+    });
+
+    const files = res.data.files || [];
+    if (files.length === 0) {
+      console.log("No template presentations found.");
+      console.log("Tip: Name your templates with 'template' in the title.");
+      return;
+    }
+
+    console.log("\nYour Templates:\n");
+    files.forEach(f => {
+      console.log("* " + f.name);
+      console.log("  ID: " + f.id);
+      console.log("  Use: gslides from-template " + f.id + " --title 'New Title'");
+      console.log("");
+    });
+  },
+
   // ==================== HELP ====================
   async help() {
     console.log(`
@@ -1195,6 +1501,13 @@ PRESENTATIONS:
   gslides read <id>                     Read all slide content
   gslides read-slide <id> --slide 1     Read specific slide
   gslides search "query"                Search presentations
+
+TEMPLATES:
+  gslides templates                     List template presentations
+  gslides from-template <id> --title "Name"  Create from template
+  gslides masters <id>                  List masters, layouts, theme colors
+  gslides apply-layout <id> --slide <slideId> --layout <layoutId>
+  gslides copy-slide <srcId> --slide <slideId> --to <destId>
 
 SLIDES:
   gslides create-slide <id> --title "Title" --body "Content" [--bullets]
