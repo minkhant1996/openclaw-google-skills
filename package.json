@@ -22,6 +22,7 @@
     "gsheet": "./src/gsheet.mjs",
     "gdocs": "./src/gdocs.mjs",
     "gslides": "./src/gslides.mjs",
+    "gdrive": "./src/gdrive.mjs",
     "gmail": "./src/gmail.mjs"
   },
   "type": "module",

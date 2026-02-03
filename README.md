@@ -1,6 +1,6 @@
 # OpenClaw Google Skills
 
-Google Workspace CLI tools for OpenClaw - Calendar, Sheets, Docs, Slides, and Gmail automation.
+Google Workspace CLI tools for OpenClaw - Calendar, Sheets, Docs, Slides, Drive, and Gmail automation.
 
 ## Quick Install
 
@@ -45,6 +45,16 @@ bash <(curl -s https://raw.githubusercontent.com/minkhant1996/openclaw-google-sk
 - Multiple slide layouts
 - Export to PDF, PPTX
 - Copy and share presentations
+
+### Google Drive (`gdrive`)
+- List, search, and manage files
+- Create folders
+- Upload and download files
+- Move, copy, rename files
+- Share files and folders
+- Manage permissions
+- Trash management
+- Storage quota info
 
 ### Gmail (`gmail`)
 - Read inbox, sent, starred, drafts
@@ -191,6 +201,40 @@ gslides set-background <id> --slide <slideId> --color blue
 
 # Export
 gslides export <id> --format pdf --output slides.pdf
+```
+
+### Google Drive
+```bash
+# List files
+gdrive list
+gdrive list --folder <folderId>
+gdrive list --type image
+
+# Search
+gdrive search "report"
+
+# Create folder
+gdrive mkdir "New Folder"
+
+# Upload/Download
+gdrive upload file.pdf --to <folderId>
+gdrive download <fileId> --output local.pdf
+
+# Organize
+gdrive move <fileId> --to <folderId>
+gdrive copy <fileId> --name "Copy"
+gdrive rename <fileId> --name "New Name"
+
+# Share
+gdrive share <fileId> --email "user@email.com" --role writer
+gdrive share <fileId> --anyone
+
+# Trash
+gdrive trash <fileId>
+gdrive untrash <fileId>
+
+# Storage
+gdrive quota
 ```
 
 ### Gmail
