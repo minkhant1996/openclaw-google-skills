@@ -315,14 +315,21 @@ const commands = {
     );
 
     if (titleElement && title) {
-      // First delete any existing placeholder text
-      requests.push({
-        deleteText: {
-          objectId: titleElement.objectId,
-          textRange: { type: "ALL" }
-        }
-      });
-      // Then insert new text
+      // Check if placeholder has existing text
+      const hasText = titleElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+
+      // Only delete if there's existing text
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: titleElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      // Insert new text
       requests.push({
         insertText: {
           objectId: titleElement.objectId,
@@ -348,14 +355,21 @@ const commands = {
         bodyText = lines.map(l => "• " + l.trim()).join("\n");
       }
 
-      // First delete any existing placeholder text
-      requests.push({
-        deleteText: {
-          objectId: bodyElement.objectId,
-          textRange: { type: "ALL" }
-        }
-      });
-      // Then insert new text
+      // Check if placeholder has existing text
+      const hasText = bodyElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+
+      // Only delete if there's existing text
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: bodyElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      // Insert new text
       requests.push({
         insertText: {
           objectId: bodyElement.objectId,
@@ -465,6 +479,115 @@ const commands = {
     }
 
     console.log("\n✅ Slide created with content!");
+    console.log("  Slide ID: " + slideId);
+    if (title) console.log("  Title: " + title);
+    if (body) console.log("  Body: " + body.substring(0, 50) + (body.length > 50 ? "..." : ""));
+  },
+
+  // ==================== UPDATE/MODIFY EXISTING SLIDE ====================
+  async "update-slide"(args) {
+    const flags = parseFlags(args);
+    const presentationId = extractPresentationId(flags._[0]);
+    const slideId = flags.slide || flags._[1];
+    const title = flags.title;
+    const body = flags.body || flags.content;
+
+    if (!presentationId || !slideId) {
+      console.log("Usage: gslides update-slide <presentationId> --slide <slideId> --title 'New Title' --body 'New Content'");
+      console.log("Options:");
+      console.log("  --slide <id>   Slide ID to update (required)");
+      console.log("  --title        New title text");
+      console.log("  --body         New body text");
+      console.log("  --bullets      Format body as bullet points");
+      return;
+    }
+
+    // Get the slide
+    const pres = await slides.presentations.get({ presentationId });
+    const slide = pres.data.slides.find(s => s.objectId === slideId);
+
+    if (!slide) {
+      console.log("Error: Slide not found: " + slideId);
+      return;
+    }
+
+    const requests = [];
+
+    // Find and update title placeholder
+    const titleElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "TITLE" ||
+      el.shape?.placeholder?.type === "CENTERED_TITLE"
+    );
+
+    if (titleElement && title) {
+      // Check if placeholder has existing text
+      const hasText = titleElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: titleElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      requests.push({
+        insertText: {
+          objectId: titleElement.objectId,
+          text: title.replace(/\\n/g, "\n"),
+          insertionIndex: 0
+        }
+      });
+    }
+
+    // Find and update body placeholder
+    const bodyElement = slide.pageElements?.find(el =>
+      el.shape?.placeholder?.type === "BODY" ||
+      el.shape?.placeholder?.type === "SUBTITLE"
+    );
+
+    if (bodyElement && body) {
+      let bodyText = body.replace(/\\n/g, "\n");
+
+      if (flags.bullets) {
+        const lines = bodyText.split("\n").filter(l => l.trim());
+        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+      }
+
+      const hasText = bodyElement.shape?.text?.textElements?.some(
+        t => t.textRun?.content?.trim()
+      );
+
+      if (hasText) {
+        requests.push({
+          deleteText: {
+            objectId: bodyElement.objectId,
+            textRange: { type: "ALL" }
+          }
+        });
+      }
+      requests.push({
+        insertText: {
+          objectId: bodyElement.objectId,
+          text: bodyText,
+          insertionIndex: 0
+        }
+      });
+    }
+
+    if (requests.length === 0) {
+      console.log("No updates specified. Use --title and/or --body.");
+      return;
+    }
+
+    await slides.presentations.batchUpdate({
+      presentationId,
+      requestBody: { requests }
+    });
+
+    console.log("\n✅ Slide updated!");
     console.log("  Slide ID: " + slideId);
     if (title) console.log("  Title: " + title);
     if (body) console.log("  Body: " + body.substring(0, 50) + (body.length > 50 ? "..." : ""));
@@ -1075,6 +1198,7 @@ PRESENTATIONS:
 
 SLIDES:
   gslides create-slide <id> --title "Title" --body "Content" [--bullets]
+  gslides update-slide <id> --slide <slideId> --title "New Title" --body "New Body"
   gslides add-slide <id> [--layout TITLE|TITLE_AND_BODY|BLANK]
   gslides delete-slide <id> --slide <slideId>
   gslides duplicate-slide <id> --slide <slideId>
@@ -1167,6 +1291,9 @@ function parseColor(color) {
 commands.ls = commands.list;
 commands.new = commands.create;
 commands.get = commands.info;
+commands.modify = commands["update-slide"];
+commands["modify-slide"] = commands["update-slide"];
+commands.update = commands["update-slide"];
 
 const [cmd, ...args] = process.argv.slice(2);
 
