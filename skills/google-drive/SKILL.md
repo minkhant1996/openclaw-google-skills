@@ -1,82 +1,55 @@
-# Google Drive Skill (gdrive)
+---
+name: google-drive
+description: "Manage Google Drive - upload, download, share files, create folders"
+metadata:
+  {
+    "openclaw":
+      {
+        "emoji": "📁",
+        "requires": { "bins": ["gdrive"] }
+      }
+  }
+---
 
-Use the `gdrive` command for ALL file storage and management tasks.
+# Google Drive Skill
 
-## When to Use
-Use this skill when user mentions: drive, files, folders, upload, download, storage, share file
+Use the `gdrive` command for ALL file storage tasks.
 
-## Common Commands
+## Commands
 
 ### List & Search
 ```bash
-gdrive list                             # List files in root
-gdrive list --folder <folderId>         # List files in folder
-gdrive list --type folder               # List only folders
-gdrive list --type image                # List only images
-gdrive search "report"                  # Search by name
-gdrive info <fileId>                    # Get file details
+gdrive list                             # List files
+gdrive list --folder <folderId>         # List folder
+gdrive search "query"                   # Search files
+gdrive info <fileId>                    # Get details
 ```
 
-### Create & Upload
+### Upload/Download
 ```bash
-gdrive mkdir "New Folder"               # Create folder
-gdrive mkdir "Subfolder" --in <parentId>
-gdrive upload file.pdf                  # Upload file
-gdrive upload file.pdf --to <folderId>  # Upload to specific folder
-gdrive upload file.pdf --name "New Name.pdf"
-```
-
-### Download
-```bash
-gdrive download <fileId>                # Download file
+gdrive upload file.pdf --to <folderId>
 gdrive download <fileId> --output local.pdf
+gdrive mkdir "Folder Name"
 ```
 
 ### Organize
 ```bash
-gdrive move <fileId> --to <folderId>    # Move file
-gdrive copy <fileId> --name "Copy"      # Copy file
+gdrive move <fileId> --to <folderId>
+gdrive copy <fileId> --name "Copy"
 gdrive rename <fileId> --name "New Name"
-gdrive delete <fileId>                  # Move to trash
+gdrive trash <fileId>
 ```
 
 ### Share
 ```bash
 gdrive share <fileId> --email "user@email.com" --role writer
 gdrive share <fileId> --anyone          # Make public
-gdrive permissions <fileId>             # List who has access
-gdrive unshare <fileId> --email "user@email.com"
-```
-
-### Trash
-```bash
-gdrive trash <fileId>                   # Move to trash
-gdrive untrash <fileId>                 # Restore
-gdrive list-trash                       # View trash
-gdrive empty-trash --confirm            # Empty trash
+gdrive permissions <fileId>             # List access
 ```
 
 ### Storage
 ```bash
-gdrive quota                            # Check storage usage
+gdrive quota                            # Check storage
 ```
 
-## File Types (for --type filter)
-- `folder` - Folders only
-- `doc` - Google Docs
-- `sheet` - Google Sheets
-- `slide` - Google Slides
-- `pdf` - PDF files
-- `image` - Images
-- `video` - Videos
-- `audio` - Audio files
-
-## Examples
-
-Organize files:
-```bash
-gdrive mkdir "Projects"
-gdrive mkdir "2026" --in <projectsFolderId>
-gdrive upload report.pdf --to <2026FolderId>
-gdrive share <fileId> --email "team@company.com" --role writer
-```
+For full help: `gdrive help`
