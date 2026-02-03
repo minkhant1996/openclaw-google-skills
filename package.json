@@ -1,0 +1,32 @@
+{
+  "name": "@brookai/openclaw-google-skills",
+  "version": "1.0.0",
+  "description": "Google Workspace CLI tools for OpenClaw - Calendar, Sheets, and Gmail",
+  "author": "BrookAI Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/minkhant1996/openclaw-google-skills.git"
+  },
+  "keywords": [
+    "openclaw",
+    "google",
+    "gmail",
+    "calendar",
+    "sheets",
+    "cli",
+    "automation"
+  ],
+  "bin": {
+    "gcal": "./src/gcal.mjs",
+    "gsheet": "./src/gsheet.mjs",
+    "gmail": "./src/gmail.mjs"
+  },
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "googleapis": "^140.0.0"
+  }
+}
