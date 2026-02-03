@@ -47,6 +47,60 @@ function extractPresentationId(input) {
   return match ? match[1] : input;
 }
 
+// Helper: Build text style request from flags
+function buildTextStyleRequest(objectId, flags, prefix = "") {
+  const textStyle = {};
+  const fields = [];
+
+  const size = flags[prefix + "size"] || flags.size;
+  const bold = flags[prefix + "bold"] || flags.bold;
+  const italic = flags[prefix + "italic"] || flags.italic;
+  const underline = flags[prefix + "underline"] || flags.underline;
+  const color = flags[prefix + "color"] || flags.color;
+  const bg = flags[prefix + "bg"];
+  const font = flags[prefix + "font"] || flags.font;
+
+  if (size) {
+    textStyle.fontSize = { magnitude: parseInt(size), unit: "PT" };
+    fields.push("fontSize");
+  }
+  if (bold) {
+    textStyle.bold = true;
+    fields.push("bold");
+  }
+  if (italic) {
+    textStyle.italic = true;
+    fields.push("italic");
+  }
+  if (underline) {
+    textStyle.underline = true;
+    fields.push("underline");
+  }
+  if (color) {
+    textStyle.foregroundColor = { opaqueColor: { rgbColor: parseColor(color) } };
+    fields.push("foregroundColor");
+  }
+  if (bg) {
+    textStyle.backgroundColor = { opaqueColor: { rgbColor: parseColor(bg) } };
+    fields.push("backgroundColor");
+  }
+  if (font) {
+    textStyle.fontFamily = font;
+    fields.push("fontFamily");
+  }
+
+  if (fields.length === 0) return null;
+
+  return {
+    updateTextStyle: {
+      objectId,
+      style: textStyle,
+      textRange: { type: "ALL" },
+      fields: fields.join(",")
+    }
+  };
+}
+
 // Helper: Resolve slide ID from index (1-based) or actual ID
 async function resolveSlideId(presentationId, slideRef) {
   if (!slideRef) return null;
@@ -405,7 +459,14 @@ const commands = {
       console.log("Usage: gslides create-slide <presentationId> --title 'Title' --body 'Content'");
       console.log("Options:");
       console.log("  --layout TITLE|TITLE_AND_BODY|BLANK (default: TITLE_AND_BODY)");
-      console.log("  --bullets    Format body as bullet points (split by newlines)");
+      console.log("  --bullets      Format body as native bullet points");
+      console.log("Text Styling:");
+      console.log("  --font Arial   Font family for all text");
+      console.log("  --size 18      Font size in points");
+      console.log("  --bold         Bold text");
+      console.log("  --italic       Italic text");
+      console.log("  --underline    Underline text");
+      console.log("  --color red    Text color");
       return;
     }
 
@@ -464,6 +525,10 @@ const commands = {
           insertionIndex: 0
         }
       });
+
+      // Apply text styling to title if specified
+      const titleStyle = buildTextStyleRequest(titleElement.objectId, flags);
+      if (titleStyle) requests.push(titleStyle);
     }
 
     // Find and fill body placeholder
@@ -516,6 +581,10 @@ const commands = {
           }
         });
       }
+
+      // Apply text styling to body if specified
+      const bodyStyle = buildTextStyleRequest(bodyElement.objectId, flags);
+      if (bodyStyle) requests.push(bodyStyle);
     }
 
     // If no placeholders but we have content, add text boxes
@@ -649,6 +718,13 @@ const commands = {
       console.log("  --title        New title text");
       console.log("  --body         New body text");
       console.log("  --bullets      Format body as native bullet points");
+      console.log("Text Styling:");
+      console.log("  --font Arial   Font family");
+      console.log("  --size 18      Font size in points");
+      console.log("  --bold         Bold text");
+      console.log("  --italic       Italic text");
+      console.log("  --underline    Underline text");
+      console.log("  --color red    Text color");
       return;
     }
 
@@ -693,6 +769,10 @@ const commands = {
           insertionIndex: 0
         }
       });
+
+      // Apply text styling to title if specified
+      const titleStyle = buildTextStyleRequest(titleElement.objectId, flags);
+      if (titleStyle) requests.push(titleStyle);
     }
 
     // Find and update body placeholder
@@ -740,6 +820,10 @@ const commands = {
           }
         });
       }
+
+      // Apply text styling to body if specified
+      const bodyStyle = buildTextStyleRequest(bodyElement.objectId, flags);
+      if (bodyStyle) requests.push(bodyStyle);
     }
 
     if (requests.length === 0) {
@@ -792,15 +876,19 @@ const commands = {
     const text = flags.text || flags._[2];
 
     if (!presentationId || !slideRef || !text) {
-      console.log("Usage: gslides add-text <presentationId> --slide <slideId|number> --text 'Your text'");
+      console.log("Usage: gslides add-text <presentationId> --slide <number|id> --text 'Your text'");
       console.log("Options:");
-      console.log("  --x 1        X position in inches (default: 1)");
-      console.log("  --y 1        Y position in inches (default: 1)");
-      console.log("  --width 8    Width in inches (default: 8)");
-      console.log("  --height 1   Height in inches (default: 1)");
-      console.log("  --size 18    Font size in points");
-      console.log("  --bold       Bold text");
-      console.log("  --color red  Text color");
+      console.log("  --x 1           X position in inches (default: 1)");
+      console.log("  --y 1           Y position in inches (default: 1)");
+      console.log("  --width 8       Width in inches (default: 8)");
+      console.log("  --height 1      Height in inches (default: 1)");
+      console.log("  --font Arial    Font family");
+      console.log("  --size 18       Font size in points");
+      console.log("  --bold          Bold text");
+      console.log("  --italic        Italic text");
+      console.log("  --underline     Underline text");
+      console.log("  --color red     Text color");
+      console.log("  --bg yellow     Background highlight color");
       return;
     }
 
@@ -845,7 +933,7 @@ const commands = {
     ];
 
     // Add formatting if specified
-    if (flags.size || flags.bold || flags.color || flags.font) {
+    if (flags.size || flags.bold || flags.italic || flags.underline || flags.color || flags.font || flags.bg) {
       const textStyle = {};
       const fields = [];
 
@@ -857,9 +945,21 @@ const commands = {
         textStyle.bold = true;
         fields.push("bold");
       }
+      if (flags.italic) {
+        textStyle.italic = true;
+        fields.push("italic");
+      }
+      if (flags.underline) {
+        textStyle.underline = true;
+        fields.push("underline");
+      }
       if (flags.color) {
         textStyle.foregroundColor = { opaqueColor: { rgbColor: parseColor(flags.color) } };
         fields.push("foregroundColor");
+      }
+      if (flags.bg) {
+        textStyle.backgroundColor = { opaqueColor: { rgbColor: parseColor(flags.bg) } };
+        fields.push("backgroundColor");
       }
       if (flags.font) {
         textStyle.fontFamily = flags.font;
