@@ -47,6 +47,24 @@ function extractPresentationId(input) {
   return match ? match[1] : input;
 }
 
+// Helper: Resolve slide ID from index (1-based) or actual ID
+async function resolveSlideId(presentationId, slideRef) {
+  if (!slideRef) return null;
+
+  // If it's a number (1, 2, 3...), look up the actual slide ID
+  if (/^\d+$/.test(slideRef)) {
+    const index = parseInt(slideRef) - 1; // Convert to 0-based
+    const pres = await slides.presentations.get({ presentationId });
+    if (index >= 0 && index < pres.data.slides.length) {
+      return pres.data.slides[index].objectId;
+    }
+    throw new Error(`Slide ${slideRef} not found. Presentation has ${pres.data.slides.length} slides.`);
+  }
+
+  // Otherwise assume it's already a slide ID
+  return slideRef;
+}
+
 // Convert inches to EMU (English Metric Units) - Google Slides uses EMU
 function inchesToEmu(inches) {
   return Math.round(inches * 914400);
@@ -620,19 +638,22 @@ const commands = {
   async "update-slide"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const title = flags.title;
     const body = flags.body || flags.content;
 
-    if (!presentationId || !slideId) {
-      console.log("Usage: gslides update-slide <presentationId> --slide <slideId> --title 'New Title' --body 'New Content'");
+    if (!presentationId || !slideRef) {
+      console.log("Usage: gslides update-slide <presentationId> --slide <slideId|number> --title 'New Title' --body 'New Content'");
       console.log("Options:");
-      console.log("  --slide <id>   Slide ID to update (required)");
+      console.log("  --slide <id>   Slide ID or number (1, 2, 3...) to update");
       console.log("  --title        New title text");
       console.log("  --body         New body text");
-      console.log("  --bullets      Format body as bullet points");
+      console.log("  --bullets      Format body as native bullet points");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     // Get the slide
     const pres = await slides.presentations.get({ presentationId });
@@ -683,9 +704,10 @@ const commands = {
     if (bodyElement && body) {
       let bodyText = body.replace(/\\n/g, "\n");
 
+      // Clean up manual bullet chars if using native bullets
       if (flags.bullets) {
         const lines = bodyText.split("\n").filter(l => l.trim());
-        bodyText = lines.map(l => "• " + l.trim()).join("\n");
+        bodyText = lines.map(l => l.replace(/^[•\-\*]\s*/, "").trim()).join("\n");
       }
 
       const hasText = bodyElement.shape?.text?.textElements?.some(
@@ -707,6 +729,17 @@ const commands = {
           insertionIndex: 0
         }
       });
+
+      // Apply native bullet formatting if --bullets flag
+      if (flags.bullets) {
+        requests.push({
+          createParagraphBullets: {
+            objectId: bodyElement.objectId,
+            textRange: { type: "ALL" },
+            bulletPreset: "BULLET_DISC_CIRCLE_SQUARE"
+          }
+        });
+      }
     }
 
     if (requests.length === 0) {
@@ -729,12 +762,15 @@ const commands = {
   async "delete-slide"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags.id || flags._[1];
+    const slideRef = flags.slide || flags.id || flags._[1];
 
-    if (!presentationId || !slideId) {
-      console.log("Usage: gslides delete-slide <presentationId> --slide <slideId>");
+    if (!presentationId || !slideRef) {
+      console.log("Usage: gslides delete-slide <presentationId> --slide <slideId|number>");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     await slides.presentations.batchUpdate({
       presentationId,
@@ -745,18 +781,18 @@ const commands = {
       }
     });
 
-    console.log("\nSlide deleted.");
+    console.log("\nSlide " + slideRef + " deleted.");
   },
 
   // ==================== ADD TEXT BOX ====================
   async "add-text"(args) {
     const flags = parseFlags(args);
     const presentationId = extractPresentationId(flags._[0]);
-    const slideId = flags.slide || flags._[1];
+    const slideRef = flags.slide || flags._[1];
     const text = flags.text || flags._[2];
 
-    if (!presentationId || !slideId || !text) {
-      console.log("Usage: gslides add-text <presentationId> --slide <slideId> --text 'Your text'");
+    if (!presentationId || !slideRef || !text) {
+      console.log("Usage: gslides add-text <presentationId> --slide <slideId|number> --text 'Your text'");
       console.log("Options:");
       console.log("  --x 1        X position in inches (default: 1)");
       console.log("  --y 1        Y position in inches (default: 1)");
@@ -767,6 +803,9 @@ const commands = {
       console.log("  --color red  Text color");
       return;
     }
+
+    // Resolve slide ID from number or actual ID
+    const slideId = await resolveSlideId(presentationId, slideRef);
 
     const x = parseFloat(flags.x) || 1;
     const y = parseFloat(flags.y) || 1;
